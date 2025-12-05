@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0">
+    <title>管理后台 - 数据处理工具</title>
+    <link rel="stylesheet"
+        href="/css/style.css">
+</head>
+
+<body>
+    <%- include('partials/header')
+        %>
+
+        <div class="admin-container">
+            <!-- 创建用户表单 -->
+            <div class="card card-compact">
+                <h2>创建新用户</h2>
+                <form method="POST"
+                    action="/admin/users"
+                    class="user-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="username">用户名</label>
+                            <input type="text"
+                                id="username"
+                                name="username"
+                                required>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="password">密码</label>
+                            <input type="password"
+                                id="password"
+                                name="password"
+                                required>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="expiryPeriod">有效期</label>
+                            <select id="expiryPeriod"
+                                name="expiryPeriod"
+                                class="form-select">
+                                <option value="">永久</option>
+                                <option value="1">一个月</option>
+                                <option value="3">三个月</option>
+                                <option value="6">半年</option>
+                                <option value="12">一年</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <button type="submit"
+                                class="btn btn-primary">创建用户</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            <!-- 用户列表 -->
+            <div class="card card-table">
+                <div class="card-header">
+                    <h2>用户列表</h2>
+                    <div class="filter-group">
+                        <input type="text"
+                            id="searchUsername"
+                            placeholder="搜索用户名..."
+                            class="filter-input"
+                            onkeyup="filterTable()">
+                        <select id="filterStatus"
+                            class="filter-select"
+                            onchange="filterTable()">
+                            <option value="">全部状态</option>
+                            <option value="正常">正常</option>
+                            <option value="已过期">已过期</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="table-wrapper">
+                    <table class="user-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>用户名</th>
+                                <th>角色</th>
+                                <th>有效期</th>
+                                <th>创建时间</th>
+                                <th>状态</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="userTableBody">
+                            <% users.forEach(u=> { %>
+                                <tr>
+                                    <td>
+                                        <%= u.id
+                                            %>
+                                    </td>
+                                    <td>
+                                        <%= u.username
+                                            %>
+                                    </td>
+                                    <td>
+                                        <% if
+                                            (u.is_admin)
+                                            {
+                                            %>
+                                            <span class="badge badge-admin">管理员</span>
+                                            <% }
+                                                else
+                                                {
+                                                %>
+                                                <span class="badge badge-user">普通用户</span>
+                                                <% }
+                                                    %>
+                                    </td>
+                                    <td>
+                                        <% if
+                                            (u.expiry_date)
+                                            {
+                                            %>
+                                            <%= new
+                                                Date(u.expiry_date).toLocaleString('zh-CN')
+                                                %>
+                                                <% }
+                                                    else
+                                                    {
+                                                    %>
+                                                    永久
+                                                    <% }
+                                                        %>
+                                    </td>
+                                    <td>
+                                        <%= new
+                                            Date(u.created_at).toLocaleString('zh-CN')
+                                            %>
+                                    </td>
+                                    <td>
+                                        <% if
+                                            (u.is_admin)
+                                            {
+                                            %>
+                                            <span class="badge badge-success">正常</span>
+                                            <% }
+                                                else
+                                                if
+                                                (!u.expiry_date)
+                                                {
+                                                %>
+                                                <span class="badge badge-success">正常</span>
+                                                <% }
+                                                    else
+                                                    if
+                                                    (new
+                                                    Date(u.expiry_date)> new Date()) { %>
+                                                    <span class="badge badge-success">正常</span>
+                                                    <% }
+                                                        else
+                                                        {
+                                                        %>
+                                                        <span class="badge badge-danger">已过期</span>
+                                                        <% }
+                                                            %>
+                                    </td>
+                                    <td>
+                                        <% if
+                                            (!u.is_admin)
+                                            {
+                                            %>
+                                            <button class="btn btn-sm btn-edit"
+                                                onclick="showEditModal(<%= u.id %>, '<%= u.username %>', '<%= u.expiry_date ? new Date(u.expiry_date).toISOString().slice(0, 16) : '' %>')">编辑</button>
+                                            <form method="POST"
+                                                action="/admin/users/<%= u.id %>/delete"
+                                                style="display: inline;">
+                                                <button type="submit"
+                                                    class="btn btn-sm btn-danger"
+                                                    onclick="return confirm('确定要删除此用户吗？')">删除</button>
+                                            </form>
+                                            <% }
+                                                else
+                                                {
+                                                %>
+                                                <span class="text-muted">-</span>
+                                                <% }
+                                                    %>
+                                    </td>
+                                </tr>
+                                <% })
+                                    %>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Toast 容器 -->
+        <div id="toastContainer"></div>
+
+        <!-- 隐藏的提示信息 -->
+        <script>
+            const messageData = {
+                <% if (success_msg && success_msg.length > 0) { %>
+                hasMessage: true,
+                    message: '<%= success_msg[0] %>',
+                        type: 'success'
+                            <% } else if (error_msg && error_msg.length > 0) { %>
+                                hasMessage: true,
+                                    message: '<%= error_msg[0] %>',
+                                        type: 'error'
+                                            <% } else { %>
+                                                hasMessage: false,
+                                                    message: '',
+                                                        type: ''
+                                                            <% } %>
+            };
+        </script>
+
+        <script>
+            // Toast 提示函数
+            function showToast(message, type = 'success') {
+                const container = document.getElementById('toastContainer')
+                const toast = document.createElement('div')
+                toast.className = `toast toast-${type}`
+                toast.innerHTML = `
+                    <svg class="toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        ${type === 'error'
+                        ? '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line>'
+                        : '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline>'
+                    }
+                    </svg>
+                    <span class="toast-message">${message}</span>
+                `
+
+                container.appendChild(toast)
+
+                // 触发动画
+                setTimeout(() => toast.classList.add('show'), 10)
+
+                // 2秒后自动关闭
+                setTimeout(() => {
+                    toast.classList.remove('show')
+                    setTimeout(() => toast.remove(), 300)
+                }, 2000)
+            }
+
+            // 表格筛选功能
+            function filterTable() {
+                const searchValue = document.getElementById('searchUsername').value.toLowerCase()
+                const statusValue = document.getElementById('filterStatus').value
+                const tbody = document.getElementById('userTableBody')
+                const rows = tbody.getElementsByTagName('tr')
+
+                for (let row of rows) {
+                    const username = row.cells[1].textContent.toLowerCase()
+                    const statusBadge = row.cells[5].querySelector('.badge')
+                    const status = statusBadge ? statusBadge.textContent : ''
+
+                    const matchUsername = username.includes(searchValue)
+                    const matchStatus = !statusValue || status === statusValue
+
+                    row.style.display = (matchUsername && matchStatus) ? '' : 'none'
+                }
+            }
+
+            // 页面加载时检查是否有消息
+            window.addEventListener('DOMContentLoaded', function () {
+                if (messageData.hasMessage) {
+                    showToast(messageData.message, messageData.type)
+                }
+            });
+        </script>
+
+        <style>
+            /* 管理页面布局 */
+            body {
+                overflow: hidden;
+            }
+
+            .admin-container {
+                height: calc(100vh - 60px);
+                /* 减去 header 高度 */
+                display: flex;
+                flex-direction: column;
+                padding: 10px;
+                gap: 10px;
+                overflow: hidden;
+            }
+
+            /* 紧凑型卡片 */
+            .card-compact {
+                flex-shrink: 0;
+                padding: 12px 15px;
+                margin-bottom: 0;
+            }
+
+            .card-compact h2 {
+                font-size: 14px;
+                margin-bottom: 10px;
+            }
+
+            /* 表格卡片占据剩余空间 */
+            .card-table {
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+                padding: 12px 15px;
+                margin-bottom: 0;
+            }
+
+            .card-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 10px;
+                flex-shrink: 0;
+            }
+
+            .card-header h2 {
+                font-size: 14px;
+                margin: 0;
+            }
+
+            /* 筛选组 */
+            .filter-group {
+                display: flex;
+                gap: 8px;
+            }
+
+            .filter-input,
+            .filter-select {
+                padding: 6px 10px;
+                border: 2px solid #e0e0e0;
+                border-radius: 6px;
+                font-size: 12px;
+                background: white;
+                transition: all 0.3s ease;
+            }
+
+            .filter-input {
+                width: 150px;
+            }
+
+            .filter-select {
+                width: 110px;
+                cursor: pointer;
+                appearance: none;
+                background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23667eea' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+                background-repeat: no-repeat;
+                background-position: right 8px center;
+                padding-right: 28px;
+            }
+
+            .filter-input:focus,
+            .filter-select:focus {
+                outline: none;
+                border-color: #667eea;
+                box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+            }
+
+            .filter-input::placeholder {
+                color: #999;
+            }
+
+            /* 优化表单中的 select */
+            .form-group select {
+                appearance: none;
+                background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23667eea' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+                background-repeat: no-repeat;
+                background-position: right 12px center;
+                padding-right: 35px;
+                cursor: pointer;
+            }
+
+            /* 表格容器 */
+            .table-wrapper {
+                flex: 1;
+                overflow: hidden;
+                display: flex;
+                flex-direction: column;
+            }
+
+            .table-wrapper table {
+                display: flex;
+                flex-direction: column;
+                flex: 1;
+                overflow: hidden;
+            }
+
+            .table-wrapper thead {
+                flex-shrink: 0;
+            }
+
+            .table-wrapper tbody {
+                flex: 1;
+                overflow-y: auto;
+                display: block;
+            }
+
+            .table-wrapper thead tr,
+            .table-wrapper tbody tr {
+                display: table;
+                width: 100%;
+                table-layout: fixed;
+            }
+
+            /* Toast 容器 */
+            #toastContainer {
+                position: fixed;
+                top: 80px;
+                right: 20px;
+                z-index: 9999;
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+            }
+
+            /* Toast 样式 */
+            .toast {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                padding: 12px 18px;
+                min-width: 280px;
+                background: rgba(255, 255, 255, 0.98);
+                border-radius: 10px;
+                box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+                backdrop-filter: blur(10px);
+                opacity: 0;
+                transform: translateX(400px);
+                transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            }
+
+            .toast.show {
+                opacity: 1;
+                transform: translateX(0);
+            }
+
+            .toast-error {
+                border-left: 3px solid #dc3545;
+                color: #721c24;
+            }
+
+            .toast-success {
+                border-left: 3px solid #28a745;
+                color: #155724;
+            }
+
+            .toast-icon {
+                width: 20px;
+                height: 20px;
+                flex-shrink: 0;
+            }
+
+            .toast-error .toast-icon {
+                color: #dc3545;
+            }
+
+            .toast-success .toast-icon {
+                color: #28a745;
+            }
+
+            .toast-message {
+                font-size: 14px;
+                font-weight: 500;
+                flex: 1;
+            }
+        </style>
+
+        <script src="/js/admin.min.js"></script>
+        <div id="editModal"
+            class="modal">
+            <div class="modal-content">
+                <span class="close"
+                    onclick="closeEditModal()">&times;</span>
+                <h2>编辑用户</h2>
+                <form id="editForm"
+                    method="POST">
+                    <div class="form-group">
+                        <label for="editUsername">用户名</label>
+                        <input type="text"
+                            id="editUsername"
+                            readonly>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="editPassword">新密码（留空则不修改）</label>
+                        <input type="password"
+                            id="editPassword"
+                            name="password">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="editExpiryPeriod">有效期</label>
+                        <select id="editExpiryPeriod"
+                            name="expiryPeriod"
+                            class="form-select">
+                            <option value="">永久</option>
+                            <option value="1">一个月</option>
+                            <option value="3">三个月</option>
+                            <option value="6">半年</option>
+                            <option value="12">一年</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <button type="submit"
+                            class="btn btn-primary">保存修改</button>
+                        <button type="button"
+                            class="btn btn-secondary"
+                            onclick="closeEditModal()">取消</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        </style>
+
+        <script src="/js/admin.js"></script>
+
+        <!-- 编辑用户模态框 -->

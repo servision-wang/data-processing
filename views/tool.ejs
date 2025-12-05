@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0">
+    <title>数据处理工具</title>
+    <link rel="stylesheet"
+        href="/css/style.css">
+    <style>
+        /* 工具页面专用样式 - 无头部,全屏显示 */
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        .tool-container {
+            height: 100vh;
+            padding: 50px 15px 15px 15px;
+            box-sizing: border-box;
+            overflow: hidden;
+            display: flex;
+            gap: 15px;
+            position: relative;
+        }
+
+        .left-panel,
+        .right-panel {
+            overflow-y: auto;
+            height: 100%;
+        }
+
+        .left-panel {
+            flex: 0 0 380px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+
+        .right-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+
+        .right-panel #results {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* 表格容器样式 */
+        .right-panel #results table {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            overflow: hidden;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .right-panel #results table thead {
+            flex-shrink: 0;
+        }
+
+        .right-panel #results table tbody {
+            flex: 1;
+            overflow-y: auto;
+            display: block;
+        }
+
+        .right-panel #results table thead,
+        .right-panel #results table tbody tr {
+            display: table;
+            width: 100%;
+            table-layout: fixed;
+        }
+
+        /* 退出按钮样式 */
+        .logout-btn {
+            position: fixed;
+            top: 10px;
+            right: 20px;
+            padding: 8px 18px;
+            background: rgba(255, 255, 255, 0.95);
+            color: #667eea;
+            border: none;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .logout-btn:hover {
+            background: rgba(255, 255, 255, 1);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+        }
+
+        .logout-btn svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        /* 输入区域优化 */
+        .input-section {
+            margin-bottom: 18px;
+        }
+
+        .input-section label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+            font-size: 13px;
+        }
+
+        textarea#dataInput {
+            width: 100%;
+            height: calc(100vh - 380px);
+            min-height: 300px;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 13px;
+            font-family: "Consolas", "Monaco", monospace;
+            resize: none;
+            transition: all 0.3s ease;
+            background: white;
+        }
+
+        textarea#dataInput:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        textarea#dataInput::placeholder {
+            color: #999;
+        }
+
+        /* 单选按钮组优化 */
+        .radio-group {
+            display: flex;
+            gap: 10px;
+            margin: 10px 0;
+        }
+
+        .radio-group label {
+            display: flex;
+            align-items: center;
+            padding: 6px 14px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 13px;
+            transition: all 0.3s ease;
+            background: white;
+        }
+
+        .radio-group label:hover {
+            border-color: #667eea;
+            background: rgba(102, 126, 234, 0.05);
+        }
+
+        .radio-group input[type="radio"] {
+            margin-right: 6px;
+            cursor: pointer;
+            accent-color: #667eea;
+        }
+
+        .radio-group input[type="radio"]:checked+span {
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        .radio-group label:has(input:checked) {
+            border-color: #667eea;
+            background: rgba(102, 126, 234, 0.1);
+        }
+
+        /* 按钮组优化 */
+        .button-group {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-process,
+        .btn-clear {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn-process {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-process:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-clear {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            box-shadow: 0 4px 12px rgba(245, 87, 108, 0.3);
+        }
+
+        .btn-clear:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(245, 87, 108, 0.4);
+        }
+    </style>
+</head>
+
+<body>
+    <!-- 退出登录按钮 -->
+    <button class="logout-btn"
+        onclick="location.href='/logout'">
+        <svg viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+            <polyline points="16 17 21 12 16 7"></polyline>
+            <line x1="21"
+                y1="12"
+                x2="9"
+                y2="12"></line>
+        </svg>
+        退出登录
+    </button>
+
+    <!-- 纯净工具页面 - 无头部导航 -->
+    <div class="tool-container">
+        <div class="left-panel">
+            <div class="input-section">
+                <label for="dataInput">数据输入区域：</label>
+                <textarea id="dataInput"
+                    placeholder="请在此粘贴或输入数据，例如：&#10;test:&#10;244/270 12/780&#10;&#10;test:&#10;114/570"></textarea>
+            </div>
+
+            <div class="input-section">
+                <label>选择命中数字：</label>
+                <div class="radio-group">
+                    <label>
+                        <input type="radio"
+                            name="hitNumber"
+                            value="1"
+                            checked>
+                        <span>1</span>
+                    </label>
+                    <label>
+                        <input type="radio"
+                            name="hitNumber"
+                            value="2">
+                        <span>2</span>
+                    </label>
+                    <label>
+                        <input type="radio"
+                            name="hitNumber"
+                            value="3">
+                        <span>3</span>
+                    </label>
+                    <label>
+                        <input type="radio"
+                            name="hitNumber"
+                            value="4">
+                        <span>4</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="button-group">
+                <button class="btn-process"
+                    onclick="processData()">处理数据</button>
+                <button class="btn-clear"
+                    onclick="clearAll()">清空</button>
+            </div>
+        </div>
+
+        <div class="right-panel">
+            <div id="results"
+                class="results"></div>
+        </div>
+    </div>
+
+    <script src="/js/tool.min.js"></script>
+</body>
+
+</html>

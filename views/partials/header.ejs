@@ -1,0 +1,19 @@
+<header class="main-header">
+    <div class="header-content">
+        <h1>数据处理工具</h1>
+        <div class="user-info">
+            <% if
+                (user)
+                {
+                %>
+                <span>欢迎, <%= user.username
+                        %></span>
+                        <a href="/tool"
+                            class="btn btn-sm">工具页面</a>
+                        <a href="/logout"
+                            class="btn btn-sm btn-logout">退出</a>
+                        <% }
+                            %>
+        </div>
+    </div>
+</header>

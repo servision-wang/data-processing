@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0">
+    <title>登录 - 数据处理工具</title>
+    <link rel="stylesheet"
+        href="/css/style.css">
+</head>
+
+<body>
+    <div class="login-container">
+        <div class="login-box">
+            <h1>数据处理工具</h1>
+            <form method="POST"
+                action="/login"
+                id="loginForm">
+                <div class="form-group">
+                    <label for="username">用户名</label>
+                    <input type="text"
+                        id="username"
+                        name="username"
+                        required
+                        autofocus>
+                </div>
+
+                <div class="form-group">
+                    <label for="password">密码</label>
+                    <input type="password"
+                        id="password"
+                        name="password"
+                        required>
+                </div>
+
+                <button type="submit"
+                    class="btn btn-primary btn-block"
+                    id="loginBtn">
+                    <span class="btn-text">登录</span>
+                    <span class="btn-loading"
+                        style="display: none;">
+                        <span class="spinner"></span>
+                        登录中...
+                    </span>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Toast 容器 -->
+    <div id="toastContainer"></div>
+
+    <!-- 隐藏的错误信息 -->
+    <script>
+        const errorData = {
+            <% if (error_msg && error_msg.length > 0) { %>
+            hasError: true,
+                message: '<%= error_msg[0] %>'
+                    <% } else { %>
+                        hasError: false,
+                            message: ''
+                                <% } %>
+        };
+    </script>
+
+    <script>
+        // Toast 提示函数
+        function showToast(message, type = 'error') {
+            const container = document.getElementById('toastContainer')
+            const toast = document.createElement('div')
+            toast.className = `toast toast-${type}`
+            toast.innerHTML = `
+                <svg class="toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    ${type === 'error'
+                    ? '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line>'
+                    : '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline>'
+                }
+                </svg>
+                <span class="toast-message">${message}</span>
+            `
+
+            container.appendChild(toast)
+
+            // 触发动画
+            setTimeout(() => toast.classList.add('show'), 10)
+
+            // 1.5秒后自动关闭
+            setTimeout(() => {
+                toast.classList.remove('show')
+                setTimeout(() => toast.remove(), 300)
+            }, 1500)
+        }
+
+        // 页面加载时检查是否有错误（只在表单提交后显示）
+        window.addEventListener('DOMContentLoaded', function () {
+            if (errorData.hasError) {
+                showToast(errorData.message, 'error')
+            }
+        })
+
+        // 登录表单提交时显示 loading 状态
+        const loginForm = document.getElementById('loginForm')
+        const loginBtn = document.getElementById('loginBtn')
+        const btnText = loginBtn.querySelector('.btn-text')
+        const btnLoading = loginBtn.querySelector('.btn-loading')
+
+        loginForm.addEventListener('submit', function (e) {
+            // 显示 loading 状态
+            btnText.style.display = 'none'
+            btnLoading.style.display = 'inline-flex'
+            loginBtn.disabled = true
+            loginBtn.style.opacity = '0.8'
+            loginBtn.style.cursor = 'not-allowed'
+        });
+    </script>
+
+    <style>
+        /* Toast 容器 */
+        #toastContainer {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        /* Toast 样式 */
+        .toast {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 20px;
+            min-width: 280px;
+            background: rgba(255, 255, 255, 0.98);
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+            backdrop-filter: blur(10px);
+            opacity: 0;
+            transform: translateX(400px);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateX(0);
+        }
+
+        .toast-error {
+            border-left: 4px solid #dc3545;
+            color: #721c24;
+        }
+
+        .toast-success {
+            border-left: 4px solid #28a745;
+            color: #155724;
+        }
+
+        .toast-icon {
+            width: 22px;
+            height: 22px;
+            flex-shrink: 0;
+        }
+
+        .toast-error .toast-icon {
+            color: #dc3545;
+        }
+
+        .toast-success .toast-icon {
+            color: #28a745;
+        }
+
+        .toast-message {
+            font-size: 14px;
+            font-weight: 500;
+            flex: 1;
+        }
+
+        /* Loading 旋转动画 */
+        .spinner {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+            margin-right: 8px;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .btn-loading {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .btn-primary:disabled {
+            pointer-events: none;
+        }
+    </style>
+</body>
+
+</html>
