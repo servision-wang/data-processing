@@ -1,0 +1,55 @@
+{
+  "specialChars": [
+    "挖",
+    "爬"
+  ],
+  "deductionRules": [
+    {
+      "min": 81,
+      "max": 199,
+      "deduction": 5
+    },
+    {
+      "min": 200,
+      "max": 399,
+      "deduction": 10
+    },
+    {
+      "min": 400,
+      "max": 599,
+      "deduction": 20
+    },
+    {
+      "min": 600,
+      "max": 799,
+      "deduction": 30
+    },
+    {
+      "min": 800,
+      "max": 1049,
+      "deduction": 40
+    },
+    {
+      "min": 1050,
+      "max": 1999,
+      "deduction": 50,
+      "increment": 10,
+      "interval": 200
+    },
+    {
+      "min": 2000,
+      "max": 2080,
+      "deduction": 80
+    },
+    {
+      "min": 2081,
+      "max": 2400,
+      "deduction": 100
+    },
+    {
+      "min": 2401,
+      "max": null,
+      "deduction": 120
+    }
+  ]
+}

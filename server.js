@@ -46,6 +46,10 @@ app.get('/', (req, res) => {
     res.redirect('/login')
 })
 
+// 添加 API 路由（在静态文件之前，在其他路由之前）
+const apiRouter = require('./routes/api')
+app.use('/api', apiRouter)
+
 // 路由
 app.use('/', authRoutes)
 app.use('/tool', toolRoutes)

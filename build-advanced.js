@@ -66,6 +66,12 @@ async function build() {
             './public/js/admin.min.js'
         )
 
+        // 混淆 config-modal.js (新增)
+        obfuscateFile(
+            './public/js/config-modal.js',
+            './public/js/config-modal.min.js'
+        )
+
         console.log('\n✅ 高级混淆完成！')
         console.log('💡 代码已加密，几乎无法逆向')
     } catch (error) {

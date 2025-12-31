@@ -1,11 +1,69 @@
 // 工具页面的数据处理逻辑
+
+// 默认配置
+const DEFAULT_CONFIG = {
+    specialChars: ['挖', '爬'],
+    deductionRules: [
+        { min: 81, max: 199, deduction: 5 },
+        { min: 200, max: 399, deduction: 10 },
+        { min: 400, max: 599, deduction: 20 },
+        { min: 600, max: 799, deduction: 30 },
+        { min: 800, max: 1049, deduction: 40 },
+        { min: 1050, max: 1999, deduction: 50, increment: 10, interval: 200 },
+        { min: 2000, max: 2080, deduction: 80 },
+        { min: 2081, max: 2400, deduction: 100 },
+        { min: 2401, max: Infinity, deduction: 120 }
+    ]
+}
+
+// 当前使用的配置
+let currentConfig = { ...DEFAULT_CONFIG }
+
+// 加载配置
+async function loadConfig() {
+    try {
+        const response = await fetch('/api/config/get')
+        if (response.ok) {
+            const data = await response.json()
+            if (data.success && data.config) {
+                currentConfig = data.config
+            }
+        }
+    } catch (error) {
+        console.error('加载配置失败:', error)
+    }
+}
+
+// 保存配置
+async function saveConfig(config) {
+    try {
+        const response = await fetch('/api/config/save', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(config)
+        })
+        const data = await response.json()
+        return data
+    } catch (error) {
+        console.error('保存配置失败:', error)
+        return { success: false, message: '保存失败' }
+    }
+}
+
+// 页面加载时初始化配置
+window.addEventListener('DOMContentLoaded', () => {
+    loadConfig()
+})
+
 function processData() {
     const input = document.getElementById('dataInput').value.trim()
     const hitNumber = document.querySelector('input[name="hitNumber"]:checked').value
     const resultsDiv = document.getElementById('results')
 
     if (!input) {
-        alert('请先输入数据！')
+        notification.warning('请先输入数据！')
         return
     }
 
@@ -21,7 +79,6 @@ function processData() {
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i].trim()
 
-        // 检查是否包含冒号（支持中英文冒号）
         if (line.includes(':') || line.includes('：')) {
             // 分割标签和数据
             const colonIndex = line.search(/[:：]/)
@@ -36,9 +93,11 @@ function processData() {
 
             // 处理冒号后面的数据（如果有）
             if (dataText) {
-                // 使用正则匹配：找出所有"数字+分隔符+数字"的模式，可选"挖"或"爬"字
-                // 匹配格式：数字 [/+-] 数字 [挖|爬]
-                const pattern = /(\d+)\s*[\/\-+]\s*(\d+)([挖爬]?)/g
+                // 构建特殊字符正则
+                const specialCharsPattern = currentConfig.specialChars.length > 0
+                    ? `[${currentConfig.specialChars.join('')}]?`
+                    : ''
+                const pattern = new RegExp(`(\\d+)\\s*[\\/\\-+]\\s*(\\d+)${specialCharsPattern}`, 'g')
                 let match
 
                 while ((match = pattern.exec(dataText)) !== null) {
@@ -48,15 +107,17 @@ function processData() {
 
                     dataGroups.push({
                         label: currentLabel,
-                        data: hitNum + separator + amount + match[3],
+                        data: hitNum + separator + amount + (match[3] || ''),
                         index: dataIndex++
                     })
                 }
             }
         } else {
-            // 没有冒号的行，作为数据行处理
-            // 使用正则匹配：找出所有"数字+分隔符+数字"的模式
-            const pattern = /(\d+)\s*[\/\-+]\s*(\d+)([挖爬]?)/g
+            // 构建特殊字符正则
+            const specialCharsPattern = currentConfig.specialChars.length > 0
+                ? `[${currentConfig.specialChars.join('')}]?`
+                : ''
+            const pattern = new RegExp(`(\\d+)\\s*[\\/\\-+]\\s*(\\d+)${specialCharsPattern}`, 'g')
             let match
 
             while ((match = pattern.exec(line)) !== null) {
@@ -66,7 +127,7 @@ function processData() {
 
                 dataGroups.push({
                     label: currentLabel,
-                    data: hitNum + separator + amount + match[3],
+                    data: hitNum + separator + amount + (match[3] || ''),
                     index: dataIndex++
                 })
             }
@@ -127,7 +188,6 @@ function displayAllData(dataGroups, hitNumber) {
     const processedData = []
 
     dataGroups.forEach(group => {
-        // 先将中文句号替换为斜杠，方便后续处理
         const normalizedData = group.data.replace(/[。]/g, '/')
         const parts = normalizedData.split(/[^\d]+/).filter(p => p.trim() !== '')
 
@@ -168,7 +228,7 @@ function displayAllData(dataGroups, hitNumber) {
                 digits: digits,
                 total: secondNumber,
                 isInvalid: false,
-                isWa: normalizedData.includes('挖') || normalizedData.includes('爬') // 标记是否是"挖"或"爬"类型
+                isSpecial: currentConfig.specialChars.some(char => normalizedData.includes(char))
             })
         }
     })
@@ -190,7 +250,7 @@ function displayAllData(dataGroups, hitNumber) {
             return
         }
 
-        const calcResult = calculateResult(item.digits, item.total, hitNumber, item.isWa)
+        const calcResult = calculateResult(item.digits, item.total, hitNumber, item.isSpecial)
         calculatedResults.push(calcResult)
 
         if (!calcResult.error) {
@@ -345,7 +405,7 @@ function displayAllData(dataGroups, hitNumber) {
     resultsDiv.appendChild(table)
 }
 
-function calculateResult(digits, total, hitNumber, isWa = false) {
+function calculateResult(digits, total, hitNumber, isSpecial = false) {
     const numDigits = digits.length
     const totalValue = parseInt(total)
     const digitSet = digits.map(d => d)
@@ -415,12 +475,10 @@ function calculateResult(digits, total, hitNumber, isWa = false) {
         const hitCount = digitCount[hitNumber]
         let result = 0
 
-        // 如果是"挖"类型，使用特殊规则
-        if (isWa) {
+        // 如果是特殊类型，使用特殊规则
+        if (isSpecial) {
             if (hitCount >= 2) {
-                // 命中重复数字：2倍
                 result = totalValue * 2
-                // "挖"类型需要扣减
                 const resultWithDeduction = applyProfitDeduction(result)
                 return {
                     value: resultWithDeduction.finalValue,
@@ -428,7 +486,6 @@ function calculateResult(digits, total, hitNumber, isWa = false) {
                     error: false
                 }
             } else {
-                // 命中非重复数字：不加不减
                 return { value: 0, deduction: 0, error: false }
             }
         } else {
@@ -454,34 +511,26 @@ function calculateResult(digits, total, hitNumber, isWa = false) {
 }
 
 /**
- * 应用积分扣减规则
- * 81-199 减5, 200-399 减10, 400-599 减20, 600-799 减30, 800-999 减40, 依此类推
- * @returns {Object} { finalValue: 扣减后的值, deduction: 扣减金额 }
+ * 应用积分扣减规则（支持自定义）
  */
 function applyProfitDeduction(profit) {
-    // 如果是亏损或积分小于等于80，不扣减
     if (profit <= 80) {
         return { finalValue: profit, deduction: 0 }
     }
 
-    // 计算扣减分数
     let deduction = 0
 
-    if (profit >= 81 && profit <= 199) {
-        deduction = 5
-    } else if (profit >= 200 && profit <= 399) {
-        deduction = 10
-    } else if (profit >= 400 && profit <= 599) {
-        deduction = 20
-    } else if (profit >= 600 && profit <= 799) {
-        deduction = 30
-    } else if (profit >= 800 && profit <= 999) {
-        deduction = 40
-    } else if (profit >= 1000) {
-        // 1000以上，每200区间增加10
-        // 1000-1199: 50, 1200-1399: 60, 1400-1599: 70...
-        const interval = Math.floor((profit - 1000) / 200)
-        deduction = 50 + interval * 10
+    for (const rule of currentConfig.deductionRules) {
+        if (profit >= rule.min && profit <= rule.max) {
+            if (rule.increment && rule.interval) {
+                // 递增规则
+                const interval = Math.floor((profit - rule.min) / rule.interval)
+                deduction = rule.deduction + interval * rule.increment
+            } else {
+                deduction = rule.deduction
+            }
+            break
+        }
     }
 
     return { finalValue: profit - deduction, deduction: deduction }
