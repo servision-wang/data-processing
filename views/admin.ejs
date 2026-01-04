@@ -165,12 +165,12 @@
                                                             %>
                                     </td>
                                     <td>
+                                        <button class="btn btn-sm btn-edit"
+                                            onclick="showEditModal(<%= u.id %>, '<%= u.username %>', '<%= u.expiry_date ? new Date(u.expiry_date).toISOString().slice(0, 16) : '' %>', <%= u.is_admin %>)">编辑</button>
                                         <% if
                                             (!u.is_admin)
                                             {
                                             %>
-                                            <button class="btn btn-sm btn-edit"
-                                                onclick="showEditModal(<%= u.id %>, '<%= u.username %>', '<%= u.expiry_date ? new Date(u.expiry_date).toISOString().slice(0, 16) : '' %>')">编辑</button>
                                             <form method="POST"
                                                 action="/admin/users/<%= u.id %>/delete"
                                                 style="display: inline;">
@@ -179,12 +179,7 @@
                                                     onclick="return confirm('确定要删除此用户吗？')">删除</button>
                                             </form>
                                             <% }
-                                                else
-                                                {
                                                 %>
-                                                <span class="text-muted">-</span>
-                                                <% }
-                                                    %>
                                     </td>
                                 </tr>
                                 <% })
@@ -492,7 +487,8 @@
                             name="password">
                     </div>
 
-                    <div class="form-group">
+                    <div class="form-group"
+                        id="editExpiryGroup">
                         <label for="editExpiryPeriod">有效期</label>
                         <select id="editExpiryPeriod"
                             name="expiryPeriod"

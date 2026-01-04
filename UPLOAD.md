@@ -31,7 +31,27 @@
    - 右键重命名为 `data-tool`
 
 4. **完成！**
+
    - 代码已上传到 `/opt/data-tool/`
+
+5. **重启应用**
+
+   ```bash
+   # 方法 1：SSH 连接后执行
+   ssh root@你的服务器IP
+   pm2 restart data-tool
+
+   # 方法 2：本地一键执行
+   ssh root@你的服务器IP "pm2 restart data-tool"
+
+   # 方法 3：使用重启脚本
+   ssh root@你的服务器IP "bash /opt/data-tool/scripts/restart-app.sh"
+   ```
+
+⚠️ **重要提醒**：
+
+- ✅ 修改代码后，只需要 `pm2 restart data-tool`
+- ❌ 不要点击腾讯云控制台的"重启"按钮（会导致 502 错误）
 
 ---
 
