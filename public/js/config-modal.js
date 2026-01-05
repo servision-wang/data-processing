@@ -131,9 +131,9 @@ function validateRules(rules) {
 }
 
 async function saveConfigModal() {
-    // 收集特殊字符
+    // 收集特殊字符 - 支持中英文逗号分隔
     const specialCharsInput = document.getElementById('specialChars').value.trim()
-    const specialChars = specialCharsInput ? specialCharsInput.split(',').map(s => s.trim()).filter(s => s) : []
+    const specialChars = specialCharsInput ? specialCharsInput.split(/[,，]/).map(s => s.trim()).filter(s => s) : []
 
     // 收集扣减规则
     const ruleItems = document.querySelectorAll('.rule-item')

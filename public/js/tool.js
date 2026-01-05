@@ -91,43 +91,47 @@ function processData() {
                 dataIndex = 1
             }
 
-            // 处理冒号后面的数据（如果有）
+            // 处理冒号后面的数据(如果有)
             if (dataText) {
-                // 构建特殊字符正则
+                // 构建特殊字符正则 - 支持多字符特殊标记（如 "wa"）
                 const specialCharsPattern = currentConfig.specialChars.length > 0
-                    ? `[${currentConfig.specialChars.join('')}]?`
-                    : ''
-                const pattern = new RegExp(`(\\d+)\\s*[\\/\\-+]\\s*(\\d+)${specialCharsPattern}`, 'g')
+                    ? `(${currentConfig.specialChars.map(c => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})?`
+                    : '()?'
+                // 匹配两个数字之间的任意非数字字符作为分隔符
+                const pattern = new RegExp(`(\\d+)\\s*([^\\d\\s]+)\\s*(\\d+)\\s*${specialCharsPattern}`, 'g')
                 let match
 
                 while ((match = pattern.exec(dataText)) !== null) {
                     const hitNum = match[1]
-                    const amount = match[2]
-                    const separator = dataText.substring(match.index + match[1].length, match.index + match[1].length + 1).trim() || '/'
+                    const separator = match[2]  // 捕获实际的分隔符(/, //, --, +-/, 等任意字符)
+                    const amount = match[3]
+                    const specialChar = match[4] || ''
 
                     dataGroups.push({
                         label: currentLabel,
-                        data: hitNum + separator + amount + (match[3] || ''),
+                        data: hitNum + separator + amount + specialChar,
                         index: dataIndex++
                     })
                 }
             }
         } else {
-            // 构建特殊字符正则
+            // 构建特殊字符正则 - 支持多字符特殊标记（如 "wa"）
             const specialCharsPattern = currentConfig.specialChars.length > 0
-                ? `[${currentConfig.specialChars.join('')}]?`
-                : ''
-            const pattern = new RegExp(`(\\d+)\\s*[\\/\\-+]\\s*(\\d+)${specialCharsPattern}`, 'g')
+                ? `(${currentConfig.specialChars.map(c => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})?`
+                : '()?'
+            // 匹配两个数字之间的任意非数字字符作为分隔符
+            const pattern = new RegExp(`(\\d+)\\s*([^\\d\\s]+)\\s*(\\d+)\\s*${specialCharsPattern}`, 'g')
             let match
 
             while ((match = pattern.exec(line)) !== null) {
                 const hitNum = match[1]
-                const amount = match[2]
-                const separator = line.substring(match.index + match[1].length, match.index + match[1].length + 1).trim() || '/'
+                const separator = match[2]  // 捕获实际的分隔符(/, //, --, +-/, 等任意字符)
+                const amount = match[3]
+                const specialChar = match[4] || ''
 
                 dataGroups.push({
                     label: currentLabel,
-                    data: hitNum + separator + amount + (match[3] || ''),
+                    data: hitNum + separator + amount + specialChar,
                     index: dataIndex++
                 })
             }
@@ -298,7 +302,7 @@ function displayAllData(dataGroups, hitNumber) {
     headerRow.appendChild(thIndex)
 
     const thLabel = document.createElement('th')
-    thLabel.textContent = '标签'
+    thLabel.textContent = '用户'
     headerRow.appendChild(thLabel)
 
     for (let i = 0; i < maxDigits; i++) {
@@ -306,6 +310,10 @@ function displayAllData(dataGroups, hitNumber) {
         th.textContent = `第${i + 1}位`
         headerRow.appendChild(th)
     }
+
+    const thSpecialChar = document.createElement('th')
+    thSpecialChar.textContent = '特殊字符'
+    headerRow.appendChild(thSpecialChar)
 
     const thTotal = document.createElement('th')
     thTotal.textContent = '积分'
@@ -344,7 +352,7 @@ function displayAllData(dataGroups, hitNumber) {
         // 如果是无效数据，显示原始数据并标记错误
         if (item.isInvalid) {
             const tdInvalid = document.createElement('td')
-            tdInvalid.colSpan = maxDigits + 3 // 合并剩余所有列
+            tdInvalid.colSpan = maxDigits + 4 // 合并剩余所有列(增加了特殊字符列)
             tdInvalid.innerHTML = `<span class="error-message">数据格式错误: ${item.originalData}</span>`
             tdInvalid.style.textAlign = 'left'
             tdInvalid.style.paddingLeft = '15px'
@@ -369,6 +377,23 @@ function displayAllData(dataGroups, hitNumber) {
 
             dataRow.appendChild(td)
         }
+
+        // 添加特殊字符列
+        const tdSpecialChar = document.createElement('td')
+        // 从原始数据中提取特殊字符
+        let specialCharValue = ''
+        for (const char of currentConfig.specialChars) {
+            if (dataGroups[index].data.includes(char)) {
+                specialCharValue = char
+                break
+            }
+        }
+        tdSpecialChar.textContent = specialCharValue
+        if (specialCharValue) {
+            tdSpecialChar.style.color = '#ff5722'
+            tdSpecialChar.style.fontWeight = '600'
+        }
+        dataRow.appendChild(tdSpecialChar)
 
         const tdTotal = document.createElement('td')
         tdTotal.textContent = item.total
@@ -474,7 +499,6 @@ function calculateResult(digits, total, hitNumber, isSpecial = false) {
 
         const hitCount = digitCount[hitNumber]
         let result = 0
-
         // 如果是特殊类型，使用特殊规则
         if (isSpecial) {
             if (hitCount >= 2) {
@@ -521,7 +545,7 @@ function applyProfitDeduction(profit) {
     let deduction = 0
 
     for (const rule of currentConfig.deductionRules) {
-        if (profit >= rule.min && profit <= rule.max) {
+        if (profit >= rule.min && (rule.max ? profit <= rule.max : true)) {
             if (rule.increment && rule.interval) {
                 // 递增规则
                 const interval = Math.floor((profit - rule.min) / rule.interval)
