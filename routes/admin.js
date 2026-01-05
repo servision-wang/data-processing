@@ -3,6 +3,11 @@ const router = express.Router()
 const User = require('../models/User')
 const { isAuthenticated, isAdmin } = require('../middlewares/auth')
 const { body, validationResult } = require('express-validator')
+const fs = require('fs')
+const path = require('path')
+
+// 配置文件路径
+const CONFIG_FILE = path.join(__dirname, '../data/config.json')
 
 // 管理员页面
 router.get('/', isAuthenticated, isAdmin, async (req, res) => {
@@ -107,7 +112,27 @@ router.post('/users/:id', isAuthenticated, isAdmin, [
 router.post('/users/:id/delete', isAuthenticated, isAdmin, async (req, res) => {
     try {
         const { id } = req.params
+
+        // 删除用户
         await User.delete(id)
+
+        // 删除用户的配置
+        try {
+            if (fs.existsSync(CONFIG_FILE)) {
+                const configData = fs.readFileSync(CONFIG_FILE, 'utf8')
+                const allConfigs = JSON.parse(configData)
+
+                if (allConfigs[id]) {
+                    delete allConfigs[id]
+                    fs.writeFileSync(CONFIG_FILE, JSON.stringify(allConfigs, null, 2), 'utf8')
+                    console.log(`已删除用户 ${id} 的配置`)
+                }
+            }
+        } catch (configError) {
+            console.error('删除用户配置失败:', configError)
+            // 配置删除失败不影响用户删除
+        }
+
         req.flash('success_msg', '用户删除成功')
         res.redirect('/admin')
     } catch (error) {

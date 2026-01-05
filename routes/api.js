@@ -28,36 +28,86 @@ const DEFAULT_CONFIG = {
     ]
 }
 
-// 获取配置
+// 获取配置 - 每个用户独立配置
 router.get('/config/get', (req, res) => {
     try {
+        // 获取当前登录用户ID
+        const userId = req.session.user ? req.session.user.id : null
+        if (!userId) {
+            return res.json({ success: false, message: '未登录' })
+        }
+
+        let allConfigs = {}
         if (fs.existsSync(CONFIG_FILE)) {
             const configData = fs.readFileSync(CONFIG_FILE, 'utf8')
-            const config = JSON.parse(configData)
-            res.json({ success: true, config })
-        } else {
-            res.json({ success: true, config: DEFAULT_CONFIG })
+            allConfigs = JSON.parse(configData)
         }
+
+        // 返回该用户的配置，如果不存在则返回默认配置
+        const userConfig = allConfigs[userId] || DEFAULT_CONFIG
+        res.json({ success: true, config: userConfig })
     } catch (error) {
         console.error('读取配置失败:', error)
         res.json({ success: true, config: DEFAULT_CONFIG })
     }
 })
 
-// 保存配置
+// 保存配置 - 保存到当前用户的配置
 router.post('/config/save', (req, res) => {
     try {
+        // 获取当前登录用户ID
+        const userId = req.session.user ? req.session.user.id : null
+        if (!userId) {
+            return res.json({ success: false, message: '未登录' })
+        }
+
         const config = req.body
 
         if (!config || !Array.isArray(config.specialChars) || !Array.isArray(config.deductionRules)) {
             return res.json({ success: false, message: '配置格式不正确' })
         }
 
-        fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf8')
+        // 读取所有配置
+        let allConfigs = {}
+        if (fs.existsSync(CONFIG_FILE)) {
+            const configData = fs.readFileSync(CONFIG_FILE, 'utf8')
+            allConfigs = JSON.parse(configData)
+        }
+
+        // 更新当前用户的配置
+        allConfigs[userId] = config
+
+        // 保存回文件
+        fs.writeFileSync(CONFIG_FILE, JSON.stringify(allConfigs, null, 2), 'utf8')
         res.json({ success: true, message: '保存成功' })
     } catch (error) {
         console.error('保存配置失败:', error)
         res.json({ success: false, message: '保存失败: ' + error.message })
+    }
+})
+
+// 删除用户配置 - 当用户被删除时调用
+router.post('/config/delete/:userId', (req, res) => {
+    try {
+        const userId = req.params.userId
+
+        // 读取所有配置
+        let allConfigs = {}
+        if (fs.existsSync(CONFIG_FILE)) {
+            const configData = fs.readFileSync(CONFIG_FILE, 'utf8')
+            allConfigs = JSON.parse(configData)
+        }
+
+        // 删除该用户的配置
+        if (allConfigs[userId]) {
+            delete allConfigs[userId]
+            fs.writeFileSync(CONFIG_FILE, JSON.stringify(allConfigs, null, 2), 'utf8')
+        }
+
+        res.json({ success: true, message: '配置已删除' })
+    } catch (error) {
+        console.error('删除配置失败:', error)
+        res.json({ success: false, message: '删除失败: ' + error.message })
     }
 })
 
