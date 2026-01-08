@@ -86,6 +86,54 @@ body {
   z-index: 1000;
 }
 
+/* 头部按钮样式优化 */
+.header-buttons .config-btn,
+.header-buttons .logout-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 1px solid transparent;
+  font-size: 14px;
+  height: 36px;
+}
+
+.header-buttons .config-btn.primary {
+  background-color: #2196f3;
+  border-color: #2196f3;
+  color: white !important;
+}
+
+.header-buttons .config-btn.primary:hover {
+  background-color: #1976d2;
+  box-shadow: 0 2px 4px rgba(33, 150, 243, 0.3);
+}
+
+.header-buttons .config-btn.warning {
+  background-color: #ff9800;
+  border-color: #ff9800;
+}
+
+.header-buttons .config-btn.warning:hover {
+  background-color: #f57c00;
+}
+
+.header-buttons .config-btn.danger {
+  background-color: #f44336;
+  border-color: #f44336;
+  color: white !important;
+}
+
+.header-buttons .config-btn.danger:hover {
+  background-color: #d32f2f;
+  box-shadow: 0 2px 4px rgba(244, 67, 54, 0.3);
+}
+
 /* 退出按钮样式 */
 .logout-btn,
 .config-btn {
@@ -105,7 +153,7 @@ body {
 }
 
 .logout-btn {
-  color: #667eea;
+  color: #667eea !important;
 }
 
 .config-btn {
@@ -566,4 +614,153 @@ textarea#dataInput::placeholder {
 .btn-cancel:hover {
   background: #d0d0d0;
   transform: translateY(-1px);
+}
+
+/* 模态窗样式补充 */
+#userStatsModal .modal-content {
+  width: 600px;
+}
+.stats-table-container {
+  max-height: 500px;
+  overflow-y: auto;
+}
+.stats-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.stats-table th,
+.stats-table td {
+  padding: 12px;
+  border-bottom: 1px solid #ddd;
+  text-align: left;
+}
+.stats-table th {
+  background-color: #f8f9fa;
+  font-weight: 600;
+}
+.stats-input {
+  width: 120px;
+  padding: 6px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+/* 用户记录模态窗优化 */
+.add-user-section {
+  background-color: #f8f9fa;
+  padding: 16px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid #e9ecef;
+}
+
+.add-user-section input {
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.add-user-section button {
+  height: 36px;
+  padding: 0 20px;
+  border: none;
+  border-radius: 4px;
+  background-color: #4caf50;
+  color: white;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background 0.2s;
+}
+
+.add-user-section button:hover {
+  background-color: #388e3c;
+}
+
+.stats-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid #e9ecef;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.stats-table th {
+  background-color: #f8f9fa;
+  padding: 12px 16px;
+  font-weight: 600;
+  color: #495057;
+  text-align: left;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.stats-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid #e9ecef;
+  color: #212529;
+  vertical-align: middle;
+}
+
+.stats-table tr:last-child td {
+  border-bottom: none;
+}
+
+.stats-table tr:hover td {
+  background-color: #f8f9fa;
+}
+
+/* 操作按钮 */
+.action-btn {
+  padding: 4px 12px;
+  border-radius: 4px;
+  border: none;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-right: 6px;
+}
+
+.action-btn.edit {
+  background-color: #e3f2fd;
+  color: #2196f3;
+}
+
+.action-btn.edit:hover {
+  background-color: #2196f3;
+  color: white;
+}
+
+.action-btn.delete {
+  background-color: #ffebee;
+  color: #f44336;
+}
+
+.action-btn.delete:hover {
+  background-color: #f44336;
+  color: white;
+}
+
+/* 编辑用户弹窗 */
+.edit-form-group {
+  margin-bottom: 16px;
+}
+
+.edit-form-group label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: #333;
+}
+
+.edit-form-group input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  box-sizing: border-box;
 }

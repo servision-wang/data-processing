@@ -5,12 +5,146 @@ const path = require('path')
 
 // 配置文件路径
 const CONFIG_FILE = path.join(__dirname, '../data/config.json')
+const USER_STATS_FILE = path.join(__dirname, '../data/user_stats.json')
 
 // 确保 data 目录存在
 const dataDir = path.join(__dirname, '../data')
 if (!fs.existsSync(dataDir)) {
     fs.mkdirSync(dataDir, { recursive: true })
 }
+
+// 辅助函数：读写用户统计数据
+function getUserStats(userId) {
+    if (!fs.existsSync(USER_STATS_FILE)) {
+        return {}
+    }
+    try {
+        const data = fs.readFileSync(USER_STATS_FILE, 'utf8')
+        const allStats = JSON.parse(data)
+        return allStats[userId] || {}
+    } catch (e) {
+        console.error('读取统计失败', e)
+        return {}
+    }
+}
+
+function saveUserStats(userId, userStats) {
+    let allStats = {}
+    if (fs.existsSync(USER_STATS_FILE)) {
+        try {
+            allStats = JSON.parse(fs.readFileSync(USER_STATS_FILE, 'utf8'))
+        } catch (e) {
+            console.error('读取统计失败', e)
+        }
+    }
+    allStats[userId] = userStats
+    try {
+        fs.writeFileSync(USER_STATS_FILE, JSON.stringify(allStats, null, 4), 'utf8')
+        return true
+    } catch (e) {
+        console.error('保存统计失败', e)
+        return false
+    }
+}
+
+// 获取用户统计列表
+router.get('/user-stats/list', (req, res) => {
+    try {
+        const userId = req.session.user ? req.session.user.id : null
+        if (!userId) return res.json({ success: false, message: '未登录' })
+
+        const stats = getUserStats(userId)
+        // 转换为数组格式方便前端展示
+        const list = Object.keys(stats).map(name => ({
+            name,
+            score: stats[name]
+        }))
+
+        // 按积分由高到低排序
+        list.sort((a, b) => b.score - a.score)
+
+        res.json({ success: true, list })
+    } catch (error) {
+        res.json({ success: false, message: error.message })
+    }
+})
+
+// 更新单个用户积分
+router.post('/user-stats/update', (req, res) => {
+    try {
+        const userId = req.session.user ? req.session.user.id : null
+        if (!userId) return res.json({ success: false, message: '未登录' })
+
+        const { name, score } = req.body
+        const stats = getUserStats(userId)
+        stats[name] = parseFloat(score) || 0
+        saveUserStats(userId, stats)
+
+        res.json({ success: true })
+    } catch (error) {
+        res.json({ success: false, message: error.message })
+    }
+})
+
+// 清空所有用户积分
+router.post('/user-stats/clear', (req, res) => {
+    try {
+        const userId = req.session.user ? req.session.user.id : null
+        if (!userId) return res.json({ success: false, message: '未登录' })
+
+        saveUserStats(userId, {})
+        res.json({ success: true })
+    } catch (error) {
+        res.json({ success: false, message: error.message })
+    }
+})
+
+// 删除单个用户
+router.post('/user-stats/delete', (req, res) => {
+    try {
+        const userId = req.session.user ? req.session.user.id : null
+        if (!userId) return res.json({ success: false, message: '未登录' })
+
+        const { name } = req.body
+        const stats = getUserStats(userId)
+        if (stats[name] !== undefined) {
+            delete stats[name]
+            saveUserStats(userId, stats)
+        }
+        res.json({ success: true })
+    } catch (error) {
+        res.json({ success: false, message: error.message })
+    }
+})
+
+// 编辑用户（支持改名和修改积分）
+router.post('/user-stats/edit', (req, res) => {
+    try {
+        const userId = req.session.user ? req.session.user.id : null
+        if (!userId) return res.json({ success: false, message: '未登录' })
+
+        const { oldName, newName, score } = req.body
+        const stats = getUserStats(userId)
+
+        // 如果改了名字，且新名字已存在（且不是自己），则报错
+        if (oldName !== newName && stats[newName] !== undefined) {
+            return res.json({ success: false, message: '用户名已存在' })
+        }
+
+        // 删除旧的
+        if (stats[oldName] !== undefined) {
+            delete stats[oldName]
+        }
+
+        // 设置新的
+        stats[newName] = parseFloat(score) || 0
+        saveUserStats(userId, stats)
+
+        res.json({ success: true })
+    } catch (error) {
+        res.json({ success: false, message: error.message })
+    }
+})
 
 // 默认配置
 const DEFAULT_CONFIG = {
@@ -139,6 +273,12 @@ router.post('/calculate', (req, res) => {
         let positiveSum = 0
         let negativeSum = 0
         let maxDigits = 0
+
+        // 获取当前用户统计数据
+        const userStats = getUserStats(userId)
+        // 临时记录本次计算中每个用户的变动，用于计算结束后的总积分展示
+        // key: label, value: score change
+        const currentSessionChanges = {}
 
         // 辅助函数：验证命中数字
         function isValidHitNumber(numStr) {
@@ -293,8 +433,30 @@ router.post('/calculate', (req, res) => {
                     totalSum += bankerValue
                     if (bankerValue > 0) positiveSum += bankerValue
                     else negativeSum += bankerValue
+
+                    // 累加用户积分 (注意：这里存储的是玩家视角的积分，即 calcResult.value)
+                    // 如果用户赢了(value > 0)，积分增加；如果用户输了(value < 0)，积分减少
+                    const userName = group.label || 'Unknown'
+                    if (!currentSessionChanges[userName]) currentSessionChanges[userName] = 0
+                    currentSessionChanges[userName] += calcResult.value
                 }
             }
+        })
+
+        // 更新数据库并回填 totalScore 到 processedData
+        // 1. 先将本次变动应用到数据库
+        Object.keys(currentSessionChanges).forEach(name => {
+            if (userStats[name] === undefined) userStats[name] = 0
+            userStats[name] += currentSessionChanges[name]
+        })
+        saveUserStats(userId, userStats)
+
+        // 2. 为每条处理过的数据添加该用户当前的 accumulator (总积分)
+        // 注意：这里的总积分是包含本次变动后的结果
+        processedData.forEach(item => {
+            const userName = item.label || 'Unknown'
+            // 确保总积分存在，浮点数保留2位逻辑在前端做，这里传数字
+            item.totalScore = userStats[userName] !== undefined ? userStats[userName] : 0
         })
 
         res.json({

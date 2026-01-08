@@ -198,9 +198,6 @@ function displayAllData(processedData, calculatedResults, summary, hitNumber) {
             <span class="summary-label">负数合计：</span>
             <span class="summary-value negative">${negativeSum.toFixed(2)}</span>
         </div>
-        <button onclick="copyResults()" style="margin-left: auto; padding: 8px 16px; background: #2196F3; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: 600;">
-            📋 复制结果
-        </button>
     `
     resultsDiv.appendChild(summaryBox)
 
@@ -245,6 +242,10 @@ function displayAllData(processedData, calculatedResults, summary, hitNumber) {
     const thResult = document.createElement('th')
     thResult.textContent = '正负'
     headerRow.appendChild(thResult)
+
+    const thAcc = document.createElement('th')
+    thAcc.textContent = '总积分'
+    headerRow.appendChild(thAcc)
 
     thead.appendChild(headerRow)
     table.appendChild(thead)
@@ -335,6 +336,18 @@ function displayAllData(processedData, calculatedResults, summary, hitNumber) {
         }
         dataRow.appendChild(tdResult)
 
+        // 添加总积分列
+        const tdAcc = document.createElement('td')
+        // item.totalScore 来自后端
+        const accVal = item.totalScore !== undefined ? item.totalScore : 0
+        const accValFixed = parseFloat(accVal).toFixed(2)
+        if (accVal < 0) {
+            tdAcc.innerHTML = `<span class="result-negative">${accValFixed}</span>`
+        } else {
+            tdAcc.innerHTML = `<span class="result-positive">${accValFixed}</span>`
+        }
+        dataRow.appendChild(tdAcc)
+
         tbody.appendChild(dataRow)
     })
 
@@ -348,55 +361,268 @@ function clearAll() {
     document.querySelector('input[name="hitNumber"][value="1"]').checked = true
 }
 
-// 复制结果到剪贴板
-function copyResults() {
-    if (!window.currentResults) {
-        notification.warning('没有可复制的结果')
-        return
-    }
+// 复制当前用户积分列表
+async function copyScoreList() {
+    try {
+        const res = await fetch('/api/user-stats/list')
+        const data = await res.json()
 
-    const { processedData, calculatedResults } = window.currentResults
-
-    // 构建复制文本 - 玩家视角（不取反）
-    const lines = []
-    processedData.forEach((item, index) => {
-        const calcResult = calculatedResults[index]
-
-        // 跳过错误或无效数据
-        if (calcResult.error || item.isInvalid) {
+        if (!data.success || !data.list) {
+            notification.error('获取数据失败')
             return
         }
 
-        // 获取用户名，如果没有就使用序号
-        const userName = item.label || `序号${index + 1}`
+        const list = data.list
+        // 分构正负
+        const positive = list.filter(u => u.score >= 0)
+        const negative = list.filter(u => u.score < 0)
 
-        // 玩家视角的值（不取反）
-        const playerValue = calcResult.value
+        let text = '➕\n'
+        positive.forEach(u => {
+            // 使用 parseFloat 去除不必要的 .00，或者保留？题目里是整数但代码里是浮点。
+            // 既然是积分，通常保留位或者展示原始值。题目示例 2130, 2000, 380, -20. 看起来像整数或者 parseFloat 效果。
+            // 使用 parseFloat(u.score.toFixed(2)) 可以去除多余的0
+            text += `${u.name} ${parseFloat(parseFloat(u.score).toFixed(2))}\n`
+        })
 
-        lines.push(`${userName}：${playerValue.toFixed(2)}`)
+        if (negative.length > 0) {
+            text += '➖\n'
+            negative.forEach(u => {
+                text += `${u.name} ${parseFloat(parseFloat(u.score).toFixed(2))}\n`
+            })
+        }
+
+        // 复制到剪贴板
+        const textarea = document.createElement('textarea')
+        textarea.value = text
+        textarea.style.position = 'fixed'
+        textarea.style.opacity = '0'
+        document.body.appendChild(textarea)
+        textarea.select()
+
+        try {
+            const successful = document.execCommand('copy')
+            if (successful) {
+                notification.success('积分列表已复制！')
+            } else {
+                notification.error('复制失败')
+            }
+        } catch (err) {
+            console.error('复制失败:', err)
+            notification.error('复制失败')
+        } finally {
+            document.body.removeChild(textarea)
+        }
+
+    } catch (e) {
+        console.error(e)
+        notification.error('复制请求失败')
+    }
+}
+
+// --- 用户积分统计相关功能 ---
+
+// 显示用户积分统计模态窗
+async function showUserStats() {
+    const modal = document.getElementById('userStatsModal')
+    const closeBtns = modal.querySelectorAll('.close, .close-btn')
+
+    // 加载数据
+    await loadUserStats()
+
+    modal.style.display = 'flex'
+
+    // 绑定关闭事件
+    closeBtns.forEach(btn => {
+        btn.onclick = () => {
+            modal.style.display = 'none'
+        }
     })
 
-    const copyText = lines.join('\n')
+    // 点击外部关闭
+    window.onclick = (event) => {
+        if (event.target === modal) {
+            modal.style.display = 'none'
+        }
+    }
+}
 
-    // 使用传统方法复制到剪贴板（兼容性更好）
-    const textarea = document.createElement('textarea')
-    textarea.value = copyText
-    textarea.style.position = 'fixed'
-    textarea.style.opacity = '0'
-    document.body.appendChild(textarea)
-    textarea.select()
+// 加载用户积分列表
+async function loadUserStats() {
+    try {
+        const res = await fetch('/api/user-stats/list')
+        const data = await res.json()
+        const tbody = document.querySelector('#userStatsTable tbody')
+        tbody.innerHTML = ''
+
+        if (data.success && data.list) {
+            if (data.list.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; color: #999;">暂无用户记录</td></tr>'
+                return
+            }
+
+            data.list.forEach(user => {
+                const tr = document.createElement('tr')
+                // 格式化积分显示
+                const scoreClass = user.score >= 0 ? 'result-positive' : 'result-negative'
+                const scoreDisplay = parseFloat(user.score).toFixed(2)
+
+                tr.innerHTML = `
+                    <td>${user.name}</td>
+                    <td><span class="${scoreClass}" style="font-weight:bold">${scoreDisplay}</span></td>
+                    <td>
+                        <button class="action-btn edit" onclick="openEditUserModal('${user.name}', ${user.score})">
+                            编辑
+                        </button>
+                        <button class="action-btn delete" onclick="deleteUser('${user.name}')">
+                            删除
+                        </button>
+                    </td>
+                `
+                tbody.appendChild(tr)
+            })
+        } else {
+            notification.error('加载记录失败')
+        }
+    } catch (e) {
+        console.error(e)
+        notification.error('加载记录失败')
+    }
+}
+
+// 删除用户
+async function deleteUser(name) {
+    const confirmed = await window.showConfirm(
+        `确定要删除用户 "${name}" 的所有记录吗？此操作不可恢复。`,
+        '删除确认'
+    )
+
+    if (!confirmed) return
 
     try {
-        const successful = document.execCommand('copy')
-        if (successful) {
-            notification.success('复制成功！')
+        const res = await fetch('/api/user-stats/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name })
+        })
+        const data = await res.json()
+        if (data.success) {
+            notification.success(`已删除用户 ${name}`)
+            loadUserStats()
         } else {
-            notification.error('复制失败，请手动复制')
+            notification.error(data.message || '删除失败')
         }
-    } catch (err) {
-        console.error('复制失败:', err)
-        notification.error('复制失败，请手动复制')
-    } finally {
-        document.body.removeChild(textarea)
+    } catch (e) {
+        notification.error('删除请求失败')
+    }
+}
+
+// 打开编辑弹窗
+function openEditUserModal(name, score) {
+    document.getElementById('editOriginalName').value = name
+    document.getElementById('editUserName').value = name
+    document.getElementById('editUserScore').value = score
+    document.getElementById('editUserModal').style.display = 'flex'
+}
+
+// 关闭编辑弹窗
+function closeEditUserModal() {
+    document.getElementById('editUserModal').style.display = 'none'
+}
+
+// 保存编辑
+async function saveUserEdit() {
+    const oldName = document.getElementById('editOriginalName').value
+    const newName = document.getElementById('editUserName').value.trim()
+    const score = document.getElementById('editUserScore').value
+
+    if (!newName) {
+        notification.warning('用户名不能为空')
+        return
+    }
+
+    try {
+        const res = await fetch('/api/user-stats/edit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ oldName, newName, score })
+        })
+        const data = await res.json()
+        if (data.success) {
+            notification.success('修改成功')
+            closeEditUserModal()
+            loadUserStats()
+        } else {
+            notification.error(data.message || '修改失败')
+        }
+    } catch (e) {
+        notification.error('修改请求失败')
+    }
+}
+
+// 清空所有用户积分
+async function clearUserStats() {
+    const confirmed = await window.showConfirm(
+        '确定要清空所有用户的积分记录吗？此操作不可恢复。',
+        '清空确认'
+    )
+
+    if (!confirmed) return
+
+    try {
+        const res = await fetch('/api/user-stats/clear', { method: 'POST' })
+        const data = await res.json()
+        if (data.success) {
+            notification.success('已清空所有记录')
+            // 如果弹窗开着，刷新列表
+            if (document.getElementById('userStatsModal').style.display === 'flex') {
+                loadUserStats()
+            }
+        } else {
+            notification.error('清空失败')
+        }
+    } catch (e) {
+        notification.error('清空失败')
+    }
+}// 新增用户
+async function addNewUser() {
+    const nameInput = document.getElementById('newUserName')
+    const scoreInput = document.getElementById('newUserScore')
+
+    // 移除之前的输入框错误状态（如果需要实现）
+
+    const name = nameInput.value.trim()
+    if (!name) {
+        notification.warning('请输入用户名')
+        nameInput.focus()
+        return
+    }
+
+    let score = 0
+    if (scoreInput.value.trim() !== '') {
+        score = parseFloat(scoreInput.value)
+    }
+
+    try {
+        // 复用更新接口
+        const res = await fetch('/api/user-stats/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, score })
+        })
+        const data = await res.json()
+        if (data.success) {
+            notification.success(`已添加/更新用户 ${name}`)
+            // 清空输入框
+            nameInput.value = ''
+            scoreInput.value = ''
+            // 重新加载列表
+            await loadUserStats()
+        } else {
+            notification.error('添加失败: ' + (data.message || '未知错误'))
+        }
+    } catch (e) {
+        console.error(e)
+        notification.error('添加请求失败')
     }
 }
