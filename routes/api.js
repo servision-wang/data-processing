@@ -158,7 +158,9 @@ const DEFAULT_CONFIG = {
         { min: 1050, max: 1999, deduction: 50, increment: 10, interval: 200 },
         { min: 2000, max: 2080, deduction: 80 },
         { min: 2081, max: 2400, deduction: 100 },
-        { min: 2401, max: Infinity, deduction: 120 }
+        { min: 2401, max: 3080, deduction: 120 },
+        { min:3081, max: 3800, deduction: 150 },
+        { min: 3801, max: Infinity, deduction: 300 },
     ]
 }
 
