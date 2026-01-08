@@ -57,7 +57,7 @@ window.addEventListener('DOMContentLoaded', () => {
     loadConfig()
 })
 
-function processData() {
+async function processData() {
     const input = document.getElementById('dataInput').value.trim()
     const hitNumber = document.querySelector('input[name="hitNumber"]:checked').value
     const resultsDiv = document.getElementById('results')
@@ -67,7 +67,7 @@ function processData() {
         return
     }
 
-    resultsDiv.innerHTML = ''
+    resultsDiv.innerHTML = '<p>正在计算...</p>'
 
     // 按行分割数据
     const lines = input.split('\n').filter(line => line.trim() !== '')
@@ -138,136 +138,44 @@ function processData() {
         }
     }
 
-    displayAllData(dataGroups, hitNumber)
-}
-
-function isValidHitNumber(numStr) {
-    const digits = numStr.split('')
-    const len = digits.length
-
-    // 只能是1位、2位或3位
-    if (len < 1 || len > 3) {
-        return false
-    }
-
-    // 所有数字必须是1、2、3、4
-    if (!digits.every(d => ['1', '2', '3', '4'].includes(d))) {
-        return false
-    }
-
-    // 1位数：直接有效
-    if (len === 1) {
-        return true
-    }
-
-    // 2位数：直接有效
-    if (len === 2) {
-        return true
-    }
-
-    // 3位数：必须有且仅有2种不同的数字（即有一位重复）
-    if (len === 3) {
-        const digitCount = {}
-        digits.forEach(d => {
-            digitCount[d] = (digitCount[d] || 0) + 1
+    try {
+        const response = await fetch('/api/calculate', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ dataGroups, hitNumber })
         })
-        const uniqueCount = Object.keys(digitCount).length
-        if (uniqueCount !== 2) {
-            return false
-        }
-    }
 
-    return true
+        if (!response.ok) {
+            throw new Error('Network response was not ok')
+        }
+
+        const result = await response.json()
+
+        if (result.success) {
+            displayAllData(result.processedData, result.calculatedResults, result.summary, hitNumber)
+        } else {
+            notification.error(result.message || '计算失败')
+            resultsDiv.innerHTML = `<p class="error-message">计算失败: ${result.message}</p>`
+        }
+    } catch (error) {
+        console.error('计算请求失败:', error)
+        notification.error('计算请求失败')
+        resultsDiv.innerHTML = '<p class="error-message">计算请求失败，请稍后重试</p>'
+    }
 }
 
-function displayAllData(dataGroups, hitNumber) {
+function displayAllData(processedData, calculatedResults, summary, hitNumber) {
     const resultsDiv = document.getElementById('results')
+    resultsDiv.innerHTML = ''
 
-    if (dataGroups.length === 0) {
+    if (processedData.length === 0) {
         resultsDiv.innerHTML = '<p>没有可显示的数据</p>'
         return
     }
 
-    let maxDigits = 0
-    const processedData = []
-
-    dataGroups.forEach(group => {
-        const normalizedData = group.data.replace(/[。]/g, '/')
-        const parts = normalizedData.split(/[^\d]+/).filter(p => p.trim() !== '')
-
-        if (parts.length >= 2) {
-            let firstNumber = parts[0].trim()
-            let secondNumber = parts[1].trim()
-
-            // 智能识别：如果第一个数字不是有效命中数字，尝试交换
-            // 或者第二个数字是单个数字（1-4），也交换
-            const firstIsValid = isValidHitNumber(firstNumber)
-            const secondIsValid = isValidHitNumber(secondNumber)
-            const secondIsSingleDigit = secondNumber.length === 1 && ['1', '2', '3', '4'].includes(secondNumber)
-
-            if ((!firstIsValid && secondIsValid) || (!firstIsValid && secondIsSingleDigit)) {
-                [firstNumber, secondNumber] = [secondNumber, firstNumber]
-            }
-
-            // 再次验证：如果交换后仍然无效，标记为错误数据
-            if (!isValidHitNumber(firstNumber)) {
-                processedData.push({
-                    label: group.label,
-                    digits: [],
-                    total: secondNumber,
-                    isInvalid: true,
-                    originalData: group.data
-                })
-                return
-            }
-
-            const digits = firstNumber.split('')
-
-            if (digits.length > maxDigits) {
-                maxDigits = digits.length
-            }
-
-            processedData.push({
-                label: group.label,
-                digits: digits,
-                total: secondNumber,
-                isInvalid: false,
-                isSpecial: currentConfig.specialChars.some(char => normalizedData.includes(char))
-            })
-        }
-    })
-
-    if (processedData.length === 0) {
-        resultsDiv.innerHTML = '<p>数据格式不正确，请确保格式类似：244/270 或 12-780</p>'
-        return
-    }
-
-    let totalSum = 0
-    let positiveSum = 0
-    let negativeSum = 0
-    const calculatedResults = []
-
-    processedData.forEach(item => {
-        // 如果数据本身无效，直接标记为错误
-        if (item.isInvalid) {
-            calculatedResults.push({ value: 0, deduction: 0, error: true })
-            return
-        }
-
-        const calcResult = calculateResult(item.digits, item.total, hitNumber, item.isSpecial)
-        calculatedResults.push(calcResult)
-
-        if (!calcResult.error) {
-            // 庄家视角：取反
-            const bankerValue = -calcResult.value
-            totalSum += bankerValue
-            if (bankerValue > 0) {
-                positiveSum += bankerValue
-            } else {
-                negativeSum += bankerValue
-            }
-        }
-    })
+    const { totalSum, positiveSum, negativeSum, maxDigits } = summary
 
     const summaryBox = document.createElement('div')
     summaryBox.className = 'summary-box'
@@ -290,8 +198,17 @@ function displayAllData(dataGroups, hitNumber) {
             <span class="summary-label">负数合计：</span>
             <span class="summary-value negative">${negativeSum.toFixed(2)}</span>
         </div>
+        <button onclick="copyResults()" style="margin-left: auto; padding: 8px 16px; background: #2196F3; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: 600;">
+            📋 复制结果
+        </button>
     `
     resultsDiv.appendChild(summaryBox)
+
+    // 将数据存储到全局变量供复制使用
+    window.currentResults = {
+        processedData: processedData,
+        calculatedResults: calculatedResults
+    }
 
     const table = document.createElement('table')
     const thead = document.createElement('thead')
@@ -305,7 +222,9 @@ function displayAllData(dataGroups, hitNumber) {
     thLabel.textContent = '用户'
     headerRow.appendChild(thLabel)
 
-    for (let i = 0; i < maxDigits; i++) {
+    // 如果所有数据都是无效的，maxDigits可能是0，默认为3以便显示
+    const displayDigits = maxDigits > 0 ? maxDigits : 3
+    for (let i = 0; i < displayDigits; i++) {
         const th = document.createElement('th')
         th.textContent = `第${i + 1}位`
         headerRow.appendChild(th)
@@ -352,7 +271,7 @@ function displayAllData(dataGroups, hitNumber) {
         // 如果是无效数据，显示原始数据并标记错误
         if (item.isInvalid) {
             const tdInvalid = document.createElement('td')
-            tdInvalid.colSpan = maxDigits + 4 // 合并剩余所有列(增加了特殊字符列)
+            tdInvalid.colSpan = displayDigits + 4 // 合并剩余所有列
             tdInvalid.innerHTML = `<span class="error-message">数据格式错误: ${item.originalData}</span>`
             tdInvalid.style.textAlign = 'left'
             tdInvalid.style.paddingLeft = '15px'
@@ -361,7 +280,7 @@ function displayAllData(dataGroups, hitNumber) {
             return
         }
 
-        for (let i = 0; i < maxDigits; i++) {
+        for (let i = 0; i < displayDigits; i++) {
             const td = document.createElement('td')
 
             if (i < item.digits.length) {
@@ -380,14 +299,7 @@ function displayAllData(dataGroups, hitNumber) {
 
         // 添加特殊字符列
         const tdSpecialChar = document.createElement('td')
-        // 从原始数据中提取特殊字符
-        let specialCharValue = ''
-        for (const char of currentConfig.specialChars) {
-            if (dataGroups[index].data.includes(char)) {
-                specialCharValue = char
-                break
-            }
-        }
+        const specialCharValue = item.specialChar || ''
         tdSpecialChar.textContent = specialCharValue
         if (specialCharValue) {
             tdSpecialChar.style.color = '#ff5722'
@@ -430,138 +342,61 @@ function displayAllData(dataGroups, hitNumber) {
     resultsDiv.appendChild(table)
 }
 
-function calculateResult(digits, total, hitNumber, isSpecial = false) {
-    const numDigits = digits.length
-    const totalValue = parseInt(total)
-    const digitSet = digits.map(d => d)
-
-    const isHit = digitSet.includes(hitNumber)
-
-    // 1位数计算
-    if (numDigits === 1) {
-        if (isHit) {
-            const result = totalValue * 3
-            // 1位数也按照正常打水规则：积分>=80才打水
-            const resultWithDeduction = applyProfitDeduction(result)
-            return {
-                value: resultWithDeduction.finalValue,
-                deduction: resultWithDeduction.deduction,
-                error: false
-            }
-        } else {
-            return { value: -totalValue, deduction: 0, error: false }
-        }
-    }
-
-    // 2位数计算
-    if (numDigits === 2) {
-        const isDifferent = digitSet[0] !== digitSet[1]
-        let result = 0
-
-        if (isDifferent && isHit) {
-            result = totalValue * 1
-        } else if (!isHit) {
-            result = -totalValue
-        } else {
-            result = totalValue * 1
-        }
-
-        // 2位数且本金<=70，正常计算（不扣减）
-        if (totalValue <= 70) {
-            return { value: result, deduction: 0, error: false }
-        }
-
-        // 本金>70，需要扣减
-        const resultWithDeduction = applyProfitDeduction(result)
-        return {
-            value: resultWithDeduction.finalValue,
-            deduction: resultWithDeduction.deduction,
-            error: false
-        }
-    }
-
-    // 3位数计算
-    if (numDigits === 3) {
-        const digitCount = {}
-        digitSet.forEach(d => {
-            digitCount[d] = (digitCount[d] || 0) + 1
-        })
-
-        const uniqueDigits = Object.keys(digitCount).length
-
-        if (uniqueDigits === 3) {
-            return { value: 0, deduction: 0, error: true }
-        }
-
-        if (!isHit) {
-            return { value: -totalValue, deduction: 0, error: false }
-        }
-
-        const hitCount = digitCount[hitNumber]
-        let result = 0
-        // 如果是特殊类型，使用特殊规则
-        if (isSpecial) {
-            if (hitCount >= 2) {
-                result = totalValue * 2
-                const resultWithDeduction = applyProfitDeduction(result)
-                return {
-                    value: resultWithDeduction.finalValue,
-                    deduction: resultWithDeduction.deduction,
-                    error: false
-                }
-            } else {
-                return { value: 0, deduction: 0, error: false }
-            }
-        } else {
-            // 正常规则
-            if (hitCount >= 2) {
-                result = totalValue * 1.5
-                // 命中的是重复数字，需要扣减
-                const resultWithDeduction = applyProfitDeduction(result)
-                return {
-                    value: resultWithDeduction.finalValue,
-                    deduction: resultWithDeduction.deduction,
-                    error: false
-                }
-            } else {
-                result = totalValue * 0.5
-                // 命中的是非重复数字，正常计算（不扣减）
-                return { value: result, deduction: 0, error: false }
-            }
-        }
-    }
-
-    return { value: -totalValue, deduction: 0, error: false }
-}
-
-/**
- * 应用积分扣减规则（支持自定义）
- */
-function applyProfitDeduction(profit) {
-    if (profit <= 80) {
-        return { finalValue: profit, deduction: 0 }
-    }
-
-    let deduction = 0
-
-    for (const rule of currentConfig.deductionRules) {
-        if (profit >= rule.min && (rule.max ? profit <= rule.max : true)) {
-            if (rule.increment && rule.interval) {
-                // 递增规则
-                const interval = Math.floor((profit - rule.min) / rule.interval)
-                deduction = rule.deduction + interval * rule.increment
-            } else {
-                deduction = rule.deduction
-            }
-            break
-        }
-    }
-
-    return { finalValue: profit - deduction, deduction: deduction }
-}
-
 function clearAll() {
     document.getElementById('dataInput').value = ''
     document.getElementById('results').innerHTML = ''
     document.querySelector('input[name="hitNumber"][value="1"]').checked = true
+}
+
+// 复制结果到剪贴板
+function copyResults() {
+    if (!window.currentResults) {
+        notification.warning('没有可复制的结果')
+        return
+    }
+
+    const { processedData, calculatedResults } = window.currentResults
+
+    // 构建复制文本 - 玩家视角（不取反）
+    const lines = []
+    processedData.forEach((item, index) => {
+        const calcResult = calculatedResults[index]
+
+        // 跳过错误或无效数据
+        if (calcResult.error || item.isInvalid) {
+            return
+        }
+
+        // 获取用户名，如果没有就使用序号
+        const userName = item.label || `序号${index + 1}`
+
+        // 玩家视角的值（不取反）
+        const playerValue = calcResult.value
+
+        lines.push(`${userName}：${playerValue.toFixed(2)}`)
+    })
+
+    const copyText = lines.join('\n')
+
+    // 使用传统方法复制到剪贴板（兼容性更好）
+    const textarea = document.createElement('textarea')
+    textarea.value = copyText
+    textarea.style.position = 'fixed'
+    textarea.style.opacity = '0'
+    document.body.appendChild(textarea)
+    textarea.select()
+
+    try {
+        const successful = document.execCommand('copy')
+        if (successful) {
+            notification.success('复制成功！')
+        } else {
+            notification.error('复制失败，请手动复制')
+        }
+    } catch (err) {
+        console.error('复制失败:', err)
+        notification.error('复制失败，请手动复制')
+    } finally {
+        document.body.removeChild(textarea)
+    }
 }

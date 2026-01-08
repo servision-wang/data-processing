@@ -34,7 +34,7 @@ function obfuscateFile(inputPath, outputPath) {
 
         // 其他选项
         selfDefending: false,                    // 禁用自我保护（会影响性能）
-        disableConsoleOutput: true,              // 禁用 console 输出
+        disableConsoleOutput: false,             // 允许 console 输出
         numbersToExpressions: true,              // 将数字转换为表达式
         simplify: true,                          // 简化代码
         splitStrings: true,                      // 分割字符串
