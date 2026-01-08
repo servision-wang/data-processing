@@ -20,8 +20,9 @@ router.post('/login', [
 ], async (req, res) => {
     const errors = validationResult(req)
     if (!errors.isEmpty()) {
-        req.flash('error_msg', errors.array()[0].msg)
-        return res.redirect('/login')
+        return res.render('login', {
+            error_msg: [errors.array()[0].msg]
+        })
     }
 
     try {
@@ -29,20 +30,23 @@ router.post('/login', [
         const user = await User.findByUsername(username)
 
         if (!user) {
-            req.flash('error_msg', '用户名或密码错误')
-            return res.redirect('/login')
+            return res.render('login', {
+                error_msg: ['用户名或密码错误']
+            })
         }
 
         const isMatch = await User.comparePassword(password, user.password)
         if (!isMatch) {
-            req.flash('error_msg', '用户名或密码错误')
-            return res.redirect('/login')
+            return res.render('login', {
+                error_msg: ['用户名或密码错误']
+            })
         }
 
         // 检查账号是否过期
         if (!user.is_admin && User.isExpired(user)) {
-            req.flash('error_msg', '您的账号已过期，请联系管理员')
-            return res.redirect('/login')
+            return res.render('login', {
+                error_msg: ['您的账号已过期，请联系管理员']
+            })
         }
 
         req.session.user = {
@@ -59,8 +63,9 @@ router.post('/login', [
         }
     } catch (error) {
         console.error('登录错误:', error)
-        req.flash('error_msg', '登录失败，请稍后重试')
-        res.redirect('/login')
+        return res.render('login', {
+            error_msg: ['登录失败，请稍后重试']
+        })
     }
 })
 

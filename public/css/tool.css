@@ -764,3 +764,150 @@ textarea#dataInput::placeholder {
   border-radius: 4px;
   box-sizing: border-box;
 }
+
+/* 标签页导航 */
+.tab-navigation {
+  display: flex;
+  border-bottom: 2px solid #e0e0e0;
+  margin-bottom: 20px;
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 12px 20px;
+  background: none;
+  border: none;
+  font-size: 15px;
+  font-weight: 500;
+  color: #666;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.3s;
+}
+
+.tab-btn:hover {
+  color: #2196f3;
+}
+
+.tab-btn.active {
+  color: #2196f3;
+}
+
+.tab-btn.active::after {
+  content: "";
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: #2196f3;
+}
+
+/* 标签页内容 */
+.tab-content {
+  display: none;
+}
+
+.tab-content.active {
+  display: block;
+}
+
+/* 历史记录列表 */
+.history-list {
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.history-item {
+  background: #f8f9fa;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 12px;
+  transition: all 0.2s;
+}
+
+.history-item:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #dee2e6;
+}
+
+.history-time {
+  font-size: 14px;
+  color: #666;
+  font-weight: 500;
+}
+
+.history-info {
+  font-size: 13px;
+  color: #999;
+}
+
+.history-changes {
+  margin: 8px 0;
+  padding: 8px;
+  background: white;
+  border-radius: 4px;
+}
+
+.history-changes-title {
+  font-size: 13px;
+  color: #666;
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+
+.change-item {
+  display: inline-block;
+  margin: 4px 8px 4px 0;
+  padding: 4px 10px;
+  background: #e3f2fd;
+  color: #2196f3;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.change-item.positive {
+  background: #e8f5e9;
+  color: #4caf50;
+}
+
+.change-item.negative {
+  background: #ffebee;
+  color: #f44336;
+}
+
+.history-actions {
+  text-align: right;
+}
+
+.rollback-btn {
+  padding: 6px 16px;
+  background: #ff9800;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.rollback-btn:hover {
+  background: #f57c00;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.empty-history {
+  text-align: center;
+  padding: 40px 20px;
+  color: #999;
+  font-size: 14px;
+}

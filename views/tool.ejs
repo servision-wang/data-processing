@@ -206,41 +206,69 @@
     <!-- 用户积分统计模态窗 -->
     <div id="userStatsModal"
         class="config-modal">
-        <div class="config-modal-content">
+        <div class="config-modal-content"
+            style="width: 900px; max-width: 95vw;">
             <div class="modal-header">
                 <h2>用户积分记录</h2>
                 <span class="close-btn">&times;</span>
             </div>
+
+            <!-- 标签页导航 -->
+            <div class="tab-navigation">
+                <button class="tab-btn active"
+                    onclick="switchTab('scores')">
+                    当前积分
+                </button>
+                <button class="tab-btn"
+                    onclick="switchTab('history')">
+                    历史记录
+                </button>
+            </div>
+
             <div class="modal-body">
-                <div class="add-user-section">
-                    <input type="text"
-                        id="newUserName"
-                        placeholder="请输入用户名"
-                        style="flex: 2;">
-                    <input type="number"
-                        id="newUserScore"
-                        placeholder="初始积分 (默认0)"
-                        style="flex: 1;">
-                    <button onclick="addNewUser()">
-                        + 新增用户
-                    </button>
+                <!-- 当前积分标签页 -->
+                <div id="scoresTab"
+                    class="tab-content active">
+                    <div class="add-user-section">
+                        <input type="text"
+                            id="newUserName"
+                            placeholder="请输入用户名"
+                            style="flex: 2;">
+                        <input type="number"
+                            id="newUserScore"
+                            placeholder="初始积分 (默认0)"
+                            style="flex: 1;">
+                        <button onclick="addNewUser()">
+                            + 新增用户
+                        </button>
+                    </div>
+                    <div class="stats-table-container">
+                        <table class="stats-table"
+                            id="userStatsTable">
+                            <thead>
+                                <tr>
+                                    <th style="width: 40%">用户名</th>
+                                    <th style="width: 30%">总积分</th>
+                                    <th style="width: 30%">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- 动态加载 -->
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
-                <div class="stats-table-container">
-                    <table class="stats-table"
-                        id="userStatsTable">
-                        <thead>
-                            <tr>
-                                <th style="width: 40%">用户名</th>
-                                <th style="width: 30%">总积分</th>
-                                <th style="width: 30%">操作</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <!-- 动态加载 -->
-                        </tbody>
-                    </table>
+
+                <!-- 历史记录标签页 -->
+                <div id="historyTab"
+                    class="tab-content">
+                    <div id="historyList"
+                        class="history-list">
+                        <!-- 动态加载历史记录 -->
+                    </div>
                 </div>
             </div>
+
             <div class="modal-footer">
                 <button class="btn btn-secondary close-btn">关闭</button>
             </div>

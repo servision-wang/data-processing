@@ -2,10 +2,15 @@ const express = require('express')
 const router = express.Router()
 const fs = require('fs')
 const path = require('path')
+const User = require('../models/User')
+const lockfile = require('proper-lockfile')
 
 // 配置文件路径
 const CONFIG_FILE = path.join(__dirname, '../data/config.json')
 const USER_STATS_FILE = path.join(__dirname, '../data/user_stats.json')
+
+// 历史记录限制配置
+const MAX_HISTORY_RECORDS = 100  // 每个用户最多保留100条历史记录
 
 // 确保 data 目录存在
 const dataDir = path.join(__dirname, '../data')
@@ -13,51 +18,122 @@ if (!fs.existsSync(dataDir)) {
     fs.mkdirSync(dataDir, { recursive: true })
 }
 
+// 中间件：检查登录状态和用户是否过期
+async function requireAuth(req, res, next) {
+    const userId = req.session.user ? req.session.user.id : null
+    if (!userId) {
+        return res.status(401).json({ success: false, message: '未登录', needLogin: true })
+    }
+
+    try {
+        // 检查用户是否存在以及是否过期
+        const user = await User.findById(userId)
+        if (!user) {
+            req.session.destroy()
+            return res.status(401).json({ success: false, message: '用户不存在', needLogin: true })
+        }
+
+        // 检查账号是否过期（管理员账号不检查）
+        if (!user.is_admin && User.isExpired(user)) {
+            req.session.destroy()
+            return res.status(401).json({ success: false, message: '您的账号已过期，请联系管理员', needLogin: true })
+        }
+
+        req.userId = userId
+        next()
+    } catch (error) {
+        console.error('认证检查失败:', error)
+        return res.status(500).json({ success: false, message: '服务器错误' })
+    }
+}
+
 // 辅助函数：读写用户统计数据
+// 数据结构：{ userId: { scores: {name: score}, history: [{...}] } }
 function getUserStats(userId) {
     if (!fs.existsSync(USER_STATS_FILE)) {
-        return {}
+        return { scores: {}, history: [] }
     }
     try {
         const data = fs.readFileSync(USER_STATS_FILE, 'utf8')
         const allStats = JSON.parse(data)
-        return allStats[userId] || {}
+        const userStats = allStats[userId] || { scores: {}, history: [] }
+
+        // 兼容旧数据格式（如果是对象但没有 scores 字段，说明是旧格式）
+        if (!userStats.scores && !userStats.history) {
+            return { scores: userStats, history: [] }
+        }
+
+        return userStats
     } catch (e) {
         console.error('读取统计失败', e)
-        return {}
+        return { scores: {}, history: [] }
     }
 }
 
-function saveUserStats(userId, userStats) {
-    let allStats = {}
-    if (fs.existsSync(USER_STATS_FILE)) {
+async function saveUserStats(userId, userStats) {
+    // 确保文件存在
+    if (!fs.existsSync(USER_STATS_FILE)) {
+        fs.writeFileSync(USER_STATS_FILE, '{}', 'utf8')
+    }
+
+    let release
+    try {
+        // 获取文件锁（最多等待5秒）
+        release = await lockfile.lock(USER_STATS_FILE, {
+            retries: {
+                retries: 50,
+                minTimeout: 100,
+                maxTimeout: 500
+            }
+        })
+
+        // 读取最新数据
+        let allStats = {}
         try {
-            allStats = JSON.parse(fs.readFileSync(USER_STATS_FILE, 'utf8'))
+            const data = fs.readFileSync(USER_STATS_FILE, 'utf8')
+            allStats = JSON.parse(data)
         } catch (e) {
             console.error('读取统计失败', e)
         }
-    }
-    allStats[userId] = userStats
-    try {
+
+        // 限制历史记录数量，只保留最近100条
+        if (userStats.history && userStats.history.length > MAX_HISTORY_RECORDS) {
+            userStats.history = userStats.history.slice(-MAX_HISTORY_RECORDS)
+            console.log(`用户 ${userId} 的历史记录已自动清理，保留最近 ${MAX_HISTORY_RECORDS} 条`)
+        }
+
+        // 更新数据
+        allStats[userId] = userStats
+
+        // 写入文件
         fs.writeFileSync(USER_STATS_FILE, JSON.stringify(allStats, null, 4), 'utf8')
+
         return true
     } catch (e) {
         console.error('保存统计失败', e)
         return false
+    } finally {
+        // 释放锁
+        if (release) {
+            try {
+                await release()
+            } catch (e) {
+                console.error('释放文件锁失败', e)
+            }
+        }
     }
 }
 
 // 获取用户统计列表
-router.get('/user-stats/list', (req, res) => {
+router.get('/user-stats/list', requireAuth, (req, res) => {
     try {
-        const userId = req.session.user ? req.session.user.id : null
-        if (!userId) return res.json({ success: false, message: '未登录' })
+        const userStats = getUserStats(req.userId)
+        const scores = userStats.scores || {}
 
-        const stats = getUserStats(userId)
         // 转换为数组格式方便前端展示
-        const list = Object.keys(stats).map(name => ({
+        const list = Object.keys(scores).map(name => ({
             name,
-            score: stats[name]
+            score: scores[name]
         }))
 
         // 按积分由高到低排序
@@ -69,16 +145,42 @@ router.get('/user-stats/list', (req, res) => {
     }
 })
 
-// 更新单个用户积分
-router.post('/user-stats/update', (req, res) => {
+// 更新单个用户积分（包括新增用户）
+router.post('/user-stats/update', requireAuth, async (req, res) => {
     try {
-        const userId = req.session.user ? req.session.user.id : null
-        if (!userId) return res.json({ success: false, message: '未登录' })
-
         const { name, score } = req.body
-        const stats = getUserStats(userId)
-        stats[name] = parseFloat(score) || 0
-        saveUserStats(userId, stats)
+        const userStats = getUserStats(req.userId)
+        const scores = userStats.scores || {}
+        const history = userStats.history || []
+
+        const newScore = parseFloat(score) || 0
+        const isNewUser = scores[name] === undefined
+        const oldScore = isNewUser ? 0 : scores[name]
+
+        // 只有当积分不为0或者是更新已有用户时，才记录历史
+        if (newScore !== 0 || !isNewUser) {
+            // 创建历史记录
+            const historyEntry = {
+                id: Date.now(),
+                timestamp: new Date().toISOString(),
+                type: isNewUser ? 'manual_add' : 'manual_update',
+                operation: isNewUser ? '手动新增用户' : '手动更新用户',
+                changes: {
+                    name: name,
+                    oldScore: oldScore,
+                    newScore: newScore,
+                    scoreDiff: newScore - oldScore
+                },
+                scoresBeforeChange: { ...scores }
+            }
+
+            history.push(historyEntry)
+            userStats.history = history
+        }
+
+        scores[name] = newScore
+        userStats.scores = scores
+        await saveUserStats(req.userId, userStats)
 
         res.json({ success: true })
     } catch (error) {
@@ -87,12 +189,9 @@ router.post('/user-stats/update', (req, res) => {
 })
 
 // 清空所有用户积分
-router.post('/user-stats/clear', (req, res) => {
+router.post('/user-stats/clear', requireAuth, async (req, res) => {
     try {
-        const userId = req.session.user ? req.session.user.id : null
-        if (!userId) return res.json({ success: false, message: '未登录' })
-
-        saveUserStats(userId, {})
+        await saveUserStats(req.userId, { scores: {}, history: [] })
         res.json({ success: true })
     } catch (error) {
         res.json({ success: false, message: error.message })
@@ -100,16 +199,38 @@ router.post('/user-stats/clear', (req, res) => {
 })
 
 // 删除单个用户
-router.post('/user-stats/delete', (req, res) => {
+router.post('/user-stats/delete', requireAuth, async (req, res) => {
     try {
-        const userId = req.session.user ? req.session.user.id : null
-        if (!userId) return res.json({ success: false, message: '未登录' })
-
         const { name } = req.body
-        const stats = getUserStats(userId)
-        if (stats[name] !== undefined) {
-            delete stats[name]
-            saveUserStats(userId, stats)
+        const userStats = getUserStats(req.userId)
+        const scores = userStats.scores || {}
+        const history = userStats.history || []
+
+        if (scores[name] !== undefined) {
+            const oldScore = scores[name]
+
+            // 创建删除操作的历史记录
+            const historyEntry = {
+                id: Date.now(),
+                timestamp: new Date().toISOString(),
+                type: 'manual_delete',
+                operation: '手动删除用户',
+                deletedUser: {
+                    name: name,
+                    score: oldScore
+                },
+                scoresBeforeChange: { ...scores }
+            }
+
+            // 执行删除
+            delete scores[name]
+            userStats.scores = scores
+
+            // 保存历史记录
+            history.push(historyEntry)
+            userStats.history = history
+
+            await saveUserStats(req.userId, userStats)
         }
         res.json({ success: true })
     } catch (error) {
@@ -118,29 +239,94 @@ router.post('/user-stats/delete', (req, res) => {
 })
 
 // 编辑用户（支持改名和修改积分）
-router.post('/user-stats/edit', (req, res) => {
+router.post('/user-stats/edit', requireAuth, async (req, res) => {
     try {
-        const userId = req.session.user ? req.session.user.id : null
-        if (!userId) return res.json({ success: false, message: '未登录' })
-
         const { oldName, newName, score } = req.body
-        const stats = getUserStats(userId)
+        const userStats = getUserStats(req.userId)
+        const scores = userStats.scores || {}
+        const history = userStats.history || []
 
         // 如果改了名字，且新名字已存在（且不是自己），则报错
-        if (oldName !== newName && stats[newName] !== undefined) {
+        if (oldName !== newName && scores[newName] !== undefined) {
             return res.json({ success: false, message: '用户名已存在' })
         }
 
+        const oldScore = scores[oldName]
+        const newScore = parseFloat(score) || 0
+
+        // 创建编辑操作的历史记录
+        const historyEntry = {
+            id: Date.now(),
+            timestamp: new Date().toISOString(),
+            type: 'manual_edit',
+            operation: '手动编辑用户',
+            changes: {
+                oldName: oldName,
+                newName: newName,
+                oldScore: oldScore !== undefined ? oldScore : 0,
+                newScore: newScore,
+                scoreDiff: newScore - (oldScore !== undefined ? oldScore : 0)
+            },
+            scoresBeforeChange: { ...scores }
+        }
+
         // 删除旧的
-        if (stats[oldName] !== undefined) {
-            delete stats[oldName]
+        if (scores[oldName] !== undefined) {
+            delete scores[oldName]
         }
 
         // 设置新的
-        stats[newName] = parseFloat(score) || 0
-        saveUserStats(userId, stats)
+        scores[newName] = newScore
+        userStats.scores = scores
+
+        // 保存历史记录
+        history.push(historyEntry)
+        userStats.history = history
+
+        await saveUserStats(req.userId, userStats)
 
         res.json({ success: true })
+    } catch (error) {
+        res.json({ success: false, message: error.message })
+    }
+})
+
+// 获取历史记录列表
+router.get('/user-stats/history', requireAuth, (req, res) => {
+    try {
+        const userStats = getUserStats(req.userId)
+        const history = userStats.history || []
+
+        // 返回历史记录列表（倒序，最新的在前）
+        res.json({ success: true, history: history.reverse() })
+    } catch (error) {
+        res.json({ success: false, message: error.message })
+    }
+})
+
+// 回退到指定版本（删除该版本之后的所有记录）
+router.post('/user-stats/rollback', requireAuth, async (req, res) => {
+    try {
+        const { versionId } = req.body
+        const userStats = getUserStats(req.userId)
+        const history = userStats.history || []
+
+        // 查找目标版本
+        const versionIndex = history.findIndex(h => h.id === versionId)
+        if (versionIndex === -1) {
+            return res.json({ success: false, message: '版本不存在' })
+        }
+
+        const targetVersion = history[versionIndex]
+
+        // 恢复到该版本计算前的积分状态
+        userStats.scores = { ...targetVersion.scoresBeforeChange }
+
+        // 删除该版本及之后的所有记录
+        userStats.history = history.slice(0, versionIndex)
+
+        await saveUserStats(req.userId, userStats)
+        res.json({ success: true, message: '已回退到选定版本' })
     } catch (error) {
         res.json({ success: false, message: error.message })
     }
@@ -159,20 +345,14 @@ const DEFAULT_CONFIG = {
         { min: 2000, max: 2080, deduction: 80 },
         { min: 2081, max: 2400, deduction: 100 },
         { min: 2401, max: 3080, deduction: 120 },
-        { min:3081, max: 3800, deduction: 150 },
+        { min: 3081, max: 3800, deduction: 150 },
         { min: 3801, max: Infinity, deduction: 300 },
     ]
 }
 
 // 获取配置 - 每个用户独立配置
-router.get('/config/get', (req, res) => {
+router.get('/config/get', requireAuth, (req, res) => {
     try {
-        // 获取当前登录用户ID
-        const userId = req.session.user ? req.session.user.id : null
-        if (!userId) {
-            return res.json({ success: false, message: '未登录' })
-        }
-
         let allConfigs = {}
         if (fs.existsSync(CONFIG_FILE)) {
             const configData = fs.readFileSync(CONFIG_FILE, 'utf8')
@@ -180,7 +360,7 @@ router.get('/config/get', (req, res) => {
         }
 
         // 返回该用户的配置，如果不存在则返回默认配置
-        const userConfig = allConfigs[userId] || DEFAULT_CONFIG
+        const userConfig = allConfigs[req.userId] || DEFAULT_CONFIG
         res.json({ success: true, config: userConfig })
     } catch (error) {
         console.error('读取配置失败:', error)
@@ -189,14 +369,8 @@ router.get('/config/get', (req, res) => {
 })
 
 // 保存配置 - 保存到当前用户的配置
-router.post('/config/save', (req, res) => {
+router.post('/config/save', requireAuth, (req, res) => {
     try {
-        // 获取当前登录用户ID
-        const userId = req.session.user ? req.session.user.id : null
-        if (!userId) {
-            return res.json({ success: false, message: '未登录' })
-        }
-
         const config = req.body
 
         if (!config || !Array.isArray(config.specialChars) || !Array.isArray(config.deductionRules)) {
@@ -211,7 +385,7 @@ router.post('/config/save', (req, res) => {
         }
 
         // 更新当前用户的配置
-        allConfigs[userId] = config
+        allConfigs[req.userId] = config
 
         // 保存回文件
         fs.writeFileSync(CONFIG_FILE, JSON.stringify(allConfigs, null, 2), 'utf8')
@@ -248,14 +422,9 @@ router.post('/config/delete/:userId', (req, res) => {
 })
 
 // 计算结果 - 将计算逻辑移至后端
-router.post('/calculate', (req, res) => {
+router.post('/calculate', requireAuth, async (req, res) => {
     try {
         const { dataGroups, hitNumber } = req.body
-        const userId = req.session.user ? req.session.user.id : null
-
-        if (!userId) {
-            return res.json({ success: false, message: '未登录' })
-        }
 
         if (!dataGroups || !hitNumber) {
             return res.json({ success: false, message: '参数不完整' })
@@ -267,7 +436,7 @@ router.post('/calculate', (req, res) => {
             const configData = fs.readFileSync(CONFIG_FILE, 'utf8')
             allConfigs = JSON.parse(configData)
         }
-        const currentConfig = allConfigs[userId] || DEFAULT_CONFIG
+        const currentConfig = allConfigs[req.userId] || DEFAULT_CONFIG
 
         const processedData = []
         const calculatedResults = []
@@ -276,8 +445,6 @@ router.post('/calculate', (req, res) => {
         let negativeSum = 0
         let maxDigits = 0
 
-        // 获取当前用户统计数据
-        const userStats = getUserStats(userId)
         // 临时记录本次计算中每个用户的变动，用于计算结束后的总积分展示
         // key: label, value: score change
         const currentSessionChanges = {}
@@ -446,19 +613,37 @@ router.post('/calculate', (req, res) => {
         })
 
         // 更新数据库并回填 totalScore 到 processedData
-        // 1. 先将本次变动应用到数据库
-        Object.keys(currentSessionChanges).forEach(name => {
-            if (userStats[name] === undefined) userStats[name] = 0
-            userStats[name] += currentSessionChanges[name]
-        })
-        saveUserStats(userId, userStats)
+        // 1. 先保存历史记录（保存计算前的快照）
+        const userStats = getUserStats(req.userId)
+        const scores = userStats.scores || {}
+        const history = userStats.history || []
 
-        // 2. 为每条处理过的数据添加该用户当前的 accumulator (总积分)
-        // 注意：这里的总积分是包含本次变动后的结果
+        // 创建精简的历史记录条目（只保存关键信息）
+        const historyEntry = {
+            id: Date.now(), // 使用时间戳作为唯一ID
+            timestamp: new Date().toISOString(),
+            hitNumber: hitNumber,
+            totalSum: totalSum,
+            scoreChanges: { ...currentSessionChanges }, // 本次各用户的积分变动
+            scoresBeforeChange: { ...scores } // 计算前的积分快照
+        }
+
+        // 2. 将本次变动应用到数据库
+        Object.keys(currentSessionChanges).forEach(name => {
+            if (scores[name] === undefined) scores[name] = 0
+            scores[name] += currentSessionChanges[name]
+        })
+
+        // 3. 保存到历史记录
+        history.push(historyEntry)
+        userStats.scores = scores
+        userStats.history = history
+        await saveUserStats(req.userId, userStats)
+
+        // 4. 为每条处理过的数据添加该用户当前的总积分
         processedData.forEach(item => {
             const userName = item.label || 'Unknown'
-            // 确保总积分存在，浮点数保留2位逻辑在前端做，这里传数字
-            item.totalScore = userStats[userName] !== undefined ? userStats[userName] : 0
+            item.totalScore = scores[userName] !== undefined ? scores[userName] : 0
         })
 
         res.json({

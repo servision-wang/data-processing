@@ -56,17 +56,21 @@
         const errorData = {
             <% if (error_msg && error_msg.length > 0) { %>
             hasError: true,
-                message: '<%= error_msg[0] %>'
+                message: `<%= error_msg[0].replace(/'/g, "\\'") %>`
                     <% } else { %>
                         hasError: false,
                             message: ''
                                 <% } %>
         };
+
+        // 调试输出
+        console.log('Error data:', errorData);
     </script>
 
     <script>
         // Toast 提示函数
         function showToast(message, type = 'error') {
+            console.log('Showing toast:', message, type)
             const container = document.getElementById('toastContainer')
             const toast = document.createElement('div')
             toast.className = `toast toast-${type}`
@@ -94,8 +98,12 @@
 
         // 页面加载时检查是否有错误（只在表单提交后显示）
         window.addEventListener('DOMContentLoaded', function () {
+            console.log('DOMContentLoaded, checking errors...')
             if (errorData.hasError) {
+                console.log('Has error, showing toast...')
                 showToast(errorData.message, 'error')
+            } else {
+                console.log('No error to display')
             }
         })
 

@@ -1,5 +1,17 @@
 // 工具页面的数据处理逻辑
 
+// 统一处理 API 响应，检查是否需要登录
+function checkAuthResponse(response, data) {
+    if (response.status === 401 || (data && data.needLogin)) {
+        notification.error('未登录，正在跳转到登录页...')
+        setTimeout(() => {
+            window.location.href = '/login'
+        }, 1000)
+        return true
+    }
+    return false
+}
+
 // 默认配置
 const DEFAULT_CONFIG = {
     specialChars: ['挖', '爬'],
@@ -13,7 +25,7 @@ const DEFAULT_CONFIG = {
         { min: 2000, max: 2080, deduction: 80 },
         { min: 2081, max: 2400, deduction: 100 },
         { min: 2401, max: 3080, deduction: 120 },
-        { min:3081, max: 3800, deduction: 150 },
+        { min: 3081, max: 3800, deduction: 150 },
         { min: 3801, max: Infinity, deduction: 300 },
     ]
 }
@@ -25,11 +37,12 @@ let currentConfig = { ...DEFAULT_CONFIG }
 async function loadConfig() {
     try {
         const response = await fetch('/api/config/get')
-        if (response.ok) {
-            const data = await response.json()
-            if (data.success && data.config) {
-                currentConfig = data.config
-            }
+        const data = await response.json()
+
+        if (checkAuthResponse(response, data)) return
+
+        if (response.ok && data.success && data.config) {
+            currentConfig = data.config
         }
     } catch (error) {
         console.error('加载配置失败:', error)
@@ -47,6 +60,9 @@ async function saveConfig(config) {
             body: JSON.stringify(config)
         })
         const data = await response.json()
+
+        if (checkAuthResponse(response, data)) return { success: false, message: '未登录' }
+
         return data
     } catch (error) {
         console.error('保存配置失败:', error)
@@ -149,11 +165,13 @@ async function processData() {
             body: JSON.stringify({ dataGroups, hitNumber })
         })
 
+        const result = await response.json()
+
+        if (checkAuthResponse(response, result)) return
+
         if (!response.ok) {
             throw new Error('Network response was not ok')
         }
-
-        const result = await response.json()
 
         if (result.success) {
             displayAllData(result.processedData, result.calculatedResults, result.summary, hitNumber)
@@ -369,6 +387,8 @@ async function copyScoreList() {
         const res = await fetch('/api/user-stats/list')
         const data = await res.json()
 
+        if (checkAuthResponse(res, data)) return
+
         if (!data.success || !data.list) {
             notification.error('获取数据失败')
             return
@@ -418,11 +438,230 @@ async function copyScoreList() {
 
     } catch (e) {
         console.error(e)
-        notification.error('复制请求失败')
+        notification.error('添加请求失败')
+    }
+}
+
+// --- 历史记录相关功能 ---
+
+// 加载历史记录
+async function loadHistory() {
+    try {
+        const res = await fetch('/api/user-stats/history')
+        const data = await res.json()
+
+        if (checkAuthResponse(res, data)) return
+
+        const historyList = document.getElementById('historyList')
+
+        if (!data.success || !data.history || data.history.length === 0) {
+            historyList.innerHTML = '<div class="empty-history">📋 暂无历史记录</div>'
+            return
+        }
+
+        historyList.innerHTML = ''
+
+        data.history.forEach((item, index) => {
+            const historyItem = document.createElement('div')
+            historyItem.className = 'history-item'
+
+            // 格式化时间
+            const date = new Date(item.timestamp)
+            const timeStr = date.toLocaleString('zh-CN', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            })
+
+            let contentHtml = ''
+
+            // 根据类型生成不同的显示内容
+            if (item.type === 'manual_edit') {
+                // 手动编辑记录
+                const changes = item.changes
+                const nameChanged = changes.oldName !== changes.newName
+                const scoreChanged = changes.scoreDiff !== 0
+
+                let changeDesc = []
+                if (nameChanged) {
+                    changeDesc.push(`名称: ${changes.oldName} → ${changes.newName}`)
+                }
+                if (scoreChanged) {
+                    const sign = changes.scoreDiff > 0 ? '+' : ''
+                    changeDesc.push(`积分: ${changes.oldScore.toFixed(2)} → ${changes.newScore.toFixed(2)} (${sign}${changes.scoreDiff.toFixed(2)})`)
+                }
+
+                contentHtml = `
+                    <div class="history-header">
+                        <div>
+                            <div class="history-time">📅 ${timeStr}</div>
+                            <div class="history-info">✏️ ${item.operation}</div>
+                        </div>
+                    </div>
+                    <div class="history-changes">
+                        <div class="history-changes-title">修改内容：</div>
+                        <div style="padding: 8px; background: white; border-radius: 4px;">
+                            ${changeDesc.join('<br>')}
+                        </div>
+                    </div>
+                `
+            } else if (item.type === 'manual_delete') {
+                // 手动删除记录
+                contentHtml = `
+                    <div class="history-header">
+                        <div>
+                            <div class="history-time">📅 ${timeStr}</div>
+                            <div class="history-info">🗑️ ${item.operation}</div>
+                        </div>
+                    </div>
+                    <div class="history-changes">
+                        <div class="history-changes-title">删除用户：</div>
+                        <div style="padding: 8px; background: white; border-radius: 4px;">
+                            用户名: ${item.deletedUser.name}<br>
+                            积分: ${item.deletedUser.score.toFixed(2)}
+                        </div>
+                    </div>
+                `
+            } else if (item.type === 'manual_add' || item.type === 'manual_update') {
+                // 手动新增/更新用户记录
+                const changes = item.changes
+                const icon = item.type === 'manual_add' ? '➕' : '🔄'
+                const scoreChange = changes.scoreDiff
+                const sign = scoreChange > 0 ? '+' : ''
+
+                contentHtml = `
+                    <div class="history-header">
+                        <div>
+                            <div class="history-time">📅 ${timeStr}</div>
+                            <div class="history-info">${icon} ${item.operation}</div>
+                        </div>
+                    </div>
+                    <div class="history-changes">
+                        <div class="history-changes-title">变更详情：</div>
+                        <div style="padding: 8px; background: white; border-radius: 4px;">
+                            用户名: ${changes.name}<br>
+                            积分: ${changes.oldScore.toFixed(2)} → ${changes.newScore.toFixed(2)} (${sign}${scoreChange.toFixed(2)})
+                        </div>
+                    </div>
+                `
+            } else {
+                // 计算记录（精简版）
+                const totalChange = item.totalSum || 0
+
+                // 构建积分变更列表
+                let changesHtml = ''
+                if (item.scoreChanges && Object.keys(item.scoreChanges).length > 0) {
+                    changesHtml = '<div class="history-changes"><div class="history-changes-title">积分变更：</div>'
+                    Object.entries(item.scoreChanges).forEach(([name, change]) => {
+                        const changeClass = change >= 0 ? 'positive' : 'negative'
+                        const changeSign = change >= 0 ? '+' : ''
+                        changesHtml += `<span class="change-item ${changeClass}">${name}: ${changeSign}${change.toFixed(2)}</span>`
+                    })
+                    changesHtml += '</div>'
+                }
+
+                contentHtml = `
+                    <div class="history-header">
+                        <div>
+                            <div class="history-time">📅 ${timeStr}</div>
+                            <div class="history-info">
+                                🎲 计算记录 | 命中数字: 
+                                <span style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 4px 14px; border-radius: 20px; font-weight: bold; font-size: 16px; margin: 0 8px; box-shadow: 0 2px 8px rgba(102, 126, 234, 0.4);">
+                                    ${item.hitNumber}
+                                </span>
+                            </div>
+                        </div>
+                        <div>
+                            <span style="font-size: 14px; color: ${totalChange >= 0 ? '#4caf50' : '#f44336'}; font-weight: bold;">
+                                总计: ${totalChange.toFixed(2)}
+                            </span>
+                        </div>
+                    </div>
+                    ${changesHtml}
+                `
+            }
+
+            historyItem.innerHTML = `
+                ${contentHtml}
+                <div class="history-actions">
+                    <button class="rollback-btn" onclick="rollbackToVersion(${item.id})">
+                        ⏮️ 回退到此次计算结果之前
+                    </button>
+                </div>
+            `
+
+            historyList.appendChild(historyItem)
+        })
+
+    } catch (e) {
+        console.error(e)
+        notification.error('加载历史记录失败')
+    }
+}
+
+// 回退到指定版本
+async function rollbackToVersion(versionId) {
+    const confirmed = await window.showConfirm(
+        '确定要回退到此版本吗？\n\n此操作将恢复到该版本计算前的积分状态，并删除该版本及之后的所有记录。\n\n此操作不可恢复！',
+        '回退确认'
+    )
+
+    if (!confirmed) return
+
+    try {
+        const res = await fetch('/api/user-stats/rollback', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ versionId })
+        })
+        const data = await res.json()
+
+        if (checkAuthResponse(res, data)) return
+
+        if (data.success) {
+            notification.success('✅ 已成功回退到选定版本')
+            // 重新加载历史记录和积分列表
+            await loadHistory()
+            await loadUserStats()
+        } else {
+            notification.error('回退失败: ' + (data.message || '未知错误'))
+        }
+    } catch (e) {
+        console.error(e)
+        notification.error('回退请求失败')
     }
 }
 
 // --- 用户积分统计相关功能 ---
+
+// 当前激活的标签
+let currentTab = 'scores'
+
+// 切换标签页
+function switchTab(tabName) {
+    currentTab = tabName
+
+    // 更新标签按钮状态
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('active')
+    })
+    event.target.classList.add('active')
+
+    // 更新内容显示
+    document.querySelectorAll('.tab-content').forEach(content => {
+        content.classList.remove('active')
+    })
+
+    if (tabName === 'scores') {
+        document.getElementById('scoresTab').classList.add('active')
+    } else if (tabName === 'history') {
+        document.getElementById('historyTab').classList.add('active')
+        loadHistory()
+    }
+}
 
 // 显示用户积分统计模态窗
 async function showUserStats() {
@@ -454,6 +693,9 @@ async function loadUserStats() {
     try {
         const res = await fetch('/api/user-stats/list')
         const data = await res.json()
+
+        if (checkAuthResponse(res, data)) return
+
         const tbody = document.querySelector('#userStatsTable tbody')
         tbody.innerHTML = ''
 
@@ -508,6 +750,9 @@ async function deleteUser(name) {
             body: JSON.stringify({ name })
         })
         const data = await res.json()
+
+        if (checkAuthResponse(res, data)) return
+
         if (data.success) {
             notification.success(`已删除用户 ${name}`)
             loadUserStats()
@@ -550,6 +795,9 @@ async function saveUserEdit() {
             body: JSON.stringify({ oldName, newName, score })
         })
         const data = await res.json()
+
+        if (checkAuthResponse(res, data)) return
+
         if (data.success) {
             notification.success('修改成功')
             closeEditUserModal()
@@ -574,9 +822,12 @@ async function clearUserStats() {
     try {
         const res = await fetch('/api/user-stats/clear', { method: 'POST' })
         const data = await res.json()
+
+        if (checkAuthResponse(res, data)) return
+
         if (data.success) {
             notification.success('已清空所有记录')
-            // 如果弹窗开着，刷新列表
+            // 如果弹窗开着,刷新列表
             if (document.getElementById('userStatsModal').style.display === 'flex') {
                 loadUserStats()
             }
@@ -586,7 +837,8 @@ async function clearUserStats() {
     } catch (e) {
         notification.error('清空失败')
     }
-}// 新增用户
+}
+// 新增用户
 async function addNewUser() {
     const nameInput = document.getElementById('newUserName')
     const scoreInput = document.getElementById('newUserScore')
@@ -613,6 +865,9 @@ async function addNewUser() {
             body: JSON.stringify({ name, score })
         })
         const data = await res.json()
+
+        if (checkAuthResponse(res, data)) return
+
         if (data.success) {
             notification.success(`已添加/更新用户 ${name}`)
             // 清空输入框
