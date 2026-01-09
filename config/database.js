@@ -48,6 +48,24 @@ async function initialize() {
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         `)
 
+        // 创建登录会话表
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS login_sessions (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                ip_address VARCHAR(45) NOT NULL,
+                session_id VARCHAR(255) NOT NULL,
+                last_activity DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                INDEX idx_user_id (user_id),
+                INDEX idx_session_id (session_id),
+                INDEX idx_last_activity (last_activity)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `)
+
+        console.log('数据库表初始化成功')
+
         // 检查是否存在管理员账号
         const [adminUsers] = await pool.query('SELECT * FROM users WHERE is_admin = TRUE LIMIT 1')
 

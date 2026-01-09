@@ -7,9 +7,14 @@ const db = require('./config/database')
 const authRoutes = require('./routes/auth')
 const toolRoutes = require('./routes/tool')
 const adminRoutes = require('./routes/admin')
+const { updateSessionActivity } = require('./middlewares/auth')
+const User = require('./models/User')
 
 const app = express()
 const PORT = process.env.PORT || 3000
+
+// 信任代理服务器，以便正确获取客户端真实IP
+app.set('trust proxy', true)
 
 // 视图引擎设置
 app.set('view engine', 'ejs')
@@ -41,6 +46,9 @@ app.use((req, res, next) => {
     next()
 })
 
+// 更新会话活跃时间中间件（在所有需要认证的路由之前）
+app.use(updateSessionActivity)
+
 // 根路由重定向
 app.get('/', (req, res) => {
     res.redirect('/login')
@@ -60,6 +68,16 @@ async function initializeApp() {
     try {
         await db.initialize()
         console.log('数据库初始化成功')
+
+        // 定期清理过期会话（每小时执行一次）
+        setInterval(async () => {
+            try {
+                await User.cleanExpiredSessions()
+                console.log('已清理过期的登录会话')
+            } catch (error) {
+                console.error('清理过期会话失败:', error)
+            }
+        }, 60 * 60 * 1000) // 1小时
 
         app.listen(PORT, () => {
             console.log(`服务器运行在 http://localhost:${PORT}`)

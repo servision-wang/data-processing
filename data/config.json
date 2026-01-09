@@ -1,8 +1,5 @@
 {
-  "specialChars": [
-    "挖",
-    "爬"
-  ],
+  "specialChars": ["挖", "爬"],
   "deductionRules": [
     {
       "min": 81,
@@ -51,5 +48,6 @@
       "max": null,
       "deduction": 120
     }
-  ]
+  ],
+  "maxLoginIPs": 1
 }
